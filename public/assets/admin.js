@@ -119,7 +119,15 @@
           <div class="list-fields" style="--cols:${cols || '1fr'}">
             ${fields
               .map(
-                (f) => `<label>${esc(f.label)}${
+                (f) => f.type === 'photo'
+                  ? `<div class="list-photo" data-photo-k="${f.key}">
+                      <div class="thumb round">${item[f.key] ? `<img src="/media/${esc(item[f.key])}" alt="">` : 'No photo'}</div>
+                      <div style="display:flex;gap:6px;flex-wrap:wrap">
+                        <button type="button" class="btn btn-sm" data-a="photo-up">${item[f.key] ? 'Replace photo' : 'Upload photo'}</button>
+                        ${item[f.key] ? '<button type="button" class="btn btn-sm btn-danger" data-a="photo-rm">Remove</button>' : ''}
+                      </div>
+                    </div>`
+                  : `<label>${esc(f.label)}${
                   f.type === 'textarea'
                     ? `<textarea class="inline-input" data-k="${f.key}" placeholder="${esc(f.placeholder || '')}">${esc(item[f.key])}</textarea>`
                     : `<input class="inline-input" data-k="${f.key}" value="${esc(item[f.key])}" placeholder="${esc(f.placeholder || '')}">`
@@ -132,6 +140,30 @@
             <button type="button" class="icon-btn" data-a="down" aria-label="Move down" ${i === items.length - 1 ? 'disabled' : ''}>&darr;</button>
             <button type="button" class="icon-btn" data-a="del" aria-label="Remove">&times;</button>
           </div>`;
+        row.querySelectorAll('[data-photo-k]').forEach((box) => {
+          const key = box.dataset.photoK;
+          box.querySelector('[data-a=photo-up]').onclick = async (e) => {
+            const [file] = await pickFiles({ multiple: false });
+            if (!file) return;
+            e.target.disabled = true;
+            e.target.textContent = 'Uploading…';
+            try {
+              const photo = await uploadPhoto(file, { scope: 'site' });
+              item[key] = photo.id;
+              onChange();
+            } catch (err) {
+              toast(err.message, true);
+            }
+            render();
+          };
+          const rm = box.querySelector('[data-a=photo-rm]');
+          if (rm)
+            rm.onclick = () => {
+              item[key] = '';
+              onChange();
+              render();
+            };
+        });
         row.querySelectorAll('[data-k]').forEach((input) =>
           input.addEventListener('input', () => {
             item[input.dataset.k] = input.value;
@@ -214,6 +246,15 @@
       </section>
 
       <section class="card">
+        <div class="card-head"><div><h2>Providers</h2><p class="muted">The people who care for the children. Shown as "Our team" on the homepage. Square photos work best.</p></div></div>
+        <div class="grid-2">
+          <label class="field"><span>Section title</span><input data-key="providersTitle"></label>
+          <label class="field"><span>Short intro <small>(optional)</small></span><input data-key="providersIntro"></label>
+        </div>
+        <div id="providers-editor"></div>
+      </section>
+
+      <section class="card">
         <div class="card-head"><div><h2>Daily schedule</h2><p class="muted">What a typical day looks like, in order.</p></div></div>
         <div id="schedule-editor"></div>
       </section>
@@ -226,6 +267,20 @@
       <section class="card">
         <div class="card-head"><div><h2>Contact section</h2></div></div>
         <label class="field"><span>Intro text above the contact details</span><textarea data-key="contactIntro" rows="2"></textarea></label>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Location &amp; Google reviews</h2>
+          <p class="muted">The map and "Get directions" button appear under the contact form. Reviews come live from the daycare's Google Business Profile.</p></div></div>
+        <label class="field"><span>Full street address <small>(shown with a map; leave blank to hide the map)</small></span><input data-key="address" placeholder="Street, City, VA ZIP"></label>
+        <div class="field"><span>Google Business Profile</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input data-key="googlePlaceId" placeholder="Place ID (use Find on Google)" style="flex:1;min-width:220px">
+            <button type="button" class="btn btn-sm" id="find-google">Find on Google</button>
+          </div>
+          <span class="muted small" id="google-status" style="font-weight:600"></span>
+        </div>
+        <label class="check"><input type="checkbox" data-key="showReviews"> Show Google reviews on the homepage</label>
       </section>
 
       <div class="savebar"><div class="savebar-inner">
@@ -241,12 +296,87 @@
     };
 
     main.querySelectorAll('[data-key]').forEach((input) => {
-      input.value = site[input.dataset.key] ?? '';
-      input.addEventListener('input', () => {
-        site[input.dataset.key] = input.value;
+      const key = input.dataset.key;
+      if (input.type === 'checkbox') input.checked = !!site[key];
+      else input.value = site[key] ?? '';
+      input.addEventListener(input.type === 'checkbox' ? 'change' : 'input', () => {
+        site[key] = input.type === 'checkbox' ? input.checked : input.value;
         markDirty();
       });
     });
+
+    // Google Business Profile status and search
+    const gStatus = main.querySelector('#google-status');
+    const refreshGoogleStatus = async (force = false) => {
+      try {
+        const st = await api('/api/admin/google/status' + (force ? '?refresh=1' : ''));
+        if (!st.configured) gStatus.textContent = 'Google API key not set up in Cloudflare yet, so reviews are hidden.';
+        else if (!st.placeId) gStatus.textContent = 'Not connected. Use "Find on Google" to pick the daycare.';
+        else if (st.ok) {
+          gStatus.innerHTML = `Connected: ${esc(st.name || 'Google profile')} · ${st.rating ?? '–'}★ from ${st.count} reviews
+            <span class="muted">(updated ${new Date(st.fetchedAt).toLocaleDateString()}, refreshes every 30 days)</span>
+            <button type="button" class="btn btn-sm" id="refresh-reviews" style="margin-left:6px">Refresh reviews now</button>`;
+          gStatus.querySelector('#refresh-reviews').onclick = async (e) => {
+            e.target.disabled = true;
+            e.target.textContent = 'Refreshing…';
+            await refreshGoogleStatus(true);
+            toast('Reviews refreshed from Google');
+          };
+        }
+        else gStatus.textContent = 'Could not load reviews for this Place ID. Try "Find on Google" again.';
+      } catch {
+        gStatus.textContent = '';
+      }
+    };
+    refreshGoogleStatus();
+    main.querySelector('#find-google').onclick = () =>
+      modal(
+        `<form><h2>Find the daycare on Google</h2>
+          <p class="muted">Search by name and city, then pick the right listing.</p>
+          <p class="msg err" hidden></p>
+          <div style="display:flex;gap:8px"><input class="inline-input" name="q" value="${esc(site.name + ' ' + (site.area || ''))}" style="flex:1">
+          <button class="btn btn-primary" type="submit">Search</button></div>
+          <div class="table-list" id="g-results" style="margin-top:14px"></div>
+          <div class="modal-actions" style="margin-top:14px"><button type="button" class="btn" data-close="">Close</button></div></form>`,
+        {
+          onMount: (m, close) => {
+            const form = m.querySelector('form');
+            const out = m.querySelector('#g-results');
+            const msg = m.querySelector('.msg');
+            form.onsubmit = async (e) => {
+              e.preventDefault();
+              msg.hidden = true;
+              out.innerHTML = '<p class="muted">Searching…</p>';
+              try {
+                const { places } = await api('/api/admin/google/search', { method: 'POST', body: { query: form.elements.q.value } });
+                out.innerHTML = places.length ? '' : '<p class="muted">No matches. Try a different name or add the city.</p>';
+                places.forEach((p) => {
+                  const row = document.createElement('div');
+                  row.className = 'row-card';
+                  row.innerHTML = `<div><h3>${esc(p.name)}</h3><div class="sub">${esc(p.address)}${p.rating ? ` · ${p.rating}★ (${p.count})` : ''}</div></div>
+                    <div class="actions"><button type="button" class="btn btn-sm btn-primary">Use this</button></div>`;
+                  row.querySelector('button').onclick = () => {
+                    site.googlePlaceId = p.id;
+                    main.querySelector('[data-key=googlePlaceId]').value = p.id;
+                    if (!site.address) {
+                      site.address = p.address;
+                      main.querySelector('[data-key=address]').value = p.address;
+                    }
+                    markDirty();
+                    gStatus.textContent = `Selected: ${p.name}. Click "Save changes" to connect it.`;
+                    close();
+                  };
+                  out.appendChild(row);
+                });
+              } catch (err) {
+                out.innerHTML = '';
+                msg.textContent = err.message;
+                msg.hidden = false;
+              }
+            };
+          },
+        },
+      );
 
     main.querySelectorAll('[data-photo]').forEach((box) => {
       const key = box.dataset.photo;
@@ -292,6 +422,13 @@
       { key: 'text', label: 'Text', placeholder: 'One short sentence' },
     ], { cols: '1fr 2fr', addLabel: 'Add highlight', onChange: markDirty, max: 6 });
 
+    listEditor(main.querySelector('#providers-editor'), site.providers, [
+      { key: 'photoId', label: 'Photo', type: 'photo' },
+      { key: 'name', label: 'Name', placeholder: 'Mrs. Malik' },
+      { key: 'role', label: 'Role', placeholder: 'Owner & lead provider' },
+      { key: 'bio', label: 'About them', type: 'textarea', placeholder: 'Experience, certifications, what they love about working with kids…' },
+    ], { cols: '1fr', addLabel: 'Add provider', onChange: markDirty, max: 12 });
+
     listEditor(main.querySelector('#schedule-editor'), site.schedule, [
       { key: 'time', label: 'Time', placeholder: '9:00 AM' },
       { key: 'activity', label: 'Activity', placeholder: 'Circle time' },
@@ -313,6 +450,7 @@
         state.textContent = 'All changes saved';
         state.classList.remove('dirty');
         toast('Homepage updated');
+        refreshGoogleStatus();
       } catch (err) {
         toast(err.message, true);
       } finally {

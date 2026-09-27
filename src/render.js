@@ -47,6 +47,15 @@ const COVER_ILLUSTRATION = `
   <circle cx="352" cy="352" r="8" fill="#F29BAB"/><circle cx="170" cy="350" r="6" fill="#F6C453"/>
 </svg>`;
 
+// Give every other section a tinted background, whichever sections are shown.
+function alternateTints(html) {
+  let i = 0;
+  return html.replace(/<section id="([\w-]+)" class="section(?: section-tint)?"/g, (m, id) => {
+    const tint = i++ % 2 === 1 ? ' section-tint' : '';
+    return `<section id="${id}" class="section${tint}"`;
+  });
+}
+
 export function renderHome(site, gallery, { loggedIn = null } = {}) {
   const year = new Date().getFullYear();
   const hoursLine = site.hours.map((h) => `${h.days}${h.days && h.time ? ': ' : ''}${h.time}`).join(' · ');
@@ -57,11 +66,21 @@ export function renderHome(site, gallery, { loggedIn = null } = {}) {
     ? `<img src="/media/${esc(site.coverPhotoId)}" alt="${esc(site.name)}" fetchpriority="high">`
     : COVER_ILLUSTRATION;
 
+  const reviewsOn = !!(site.showReviews && site.googlePlaceId);
+  const mapQuery = site.address ? `${site.name}, ${site.address}` : '';
+  const directionsUrl = site.address
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(site.address)}${
+        site.googlePlaceId ? `&destination_place_id=${encodeURIComponent(site.googlePlaceId)}` : ''
+      }`
+    : '';
+
   const nav = [
     ['about', 'About'],
+    ...(site.providers.length ? [['providers', 'Our team']] : []),
     ['schedule', 'Daily schedule'],
     ['faq', 'FAQ'],
     ['gallery', 'Gallery'],
+    ...(reviewsOn ? [['reviews', 'Reviews']] : []),
     ['contact', 'Contact'],
   ];
 
@@ -85,7 +104,7 @@ export function renderHome(site, gallery, { loggedIn = null } = {}) {
         .join('')}</div>`
     : `<div class="empty-card"><p>Photos of our play space and activities are coming soon.</p></div>`;
 
-  return `<!doctype html>
+  return alternateTints(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -180,7 +199,37 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
     }
   </section>
 
-  <section id="schedule" class="section section-tint" aria-labelledby="schedule-title">
+  ${
+    site.providers.length
+      ? `<section id="providers" class="section" aria-labelledby="providers-title">
+    <div class="container">
+      <div class="section-head">
+        <p class="eyebrow">Our team</p>
+        <h2 id="providers-title">${esc(site.providersTitle)}</h2>
+        ${site.providersIntro ? `<p class="muted">${esc(site.providersIntro)}</p>` : ''}
+      </div>
+      <div class="providers-grid">
+        ${site.providers
+          .map(
+            (p) => `<article class="provider">
+          ${
+            p.photoId
+              ? `<img src="/media/${esc(p.photoId)}" alt="${esc(p.name)}" loading="lazy" width="160" height="160">`
+              : `<span class="provider-initial" aria-hidden="true">${esc((p.name || '?').trim().charAt(0))}</span>`
+          }
+          <h3>${esc(p.name)}</h3>
+          ${p.role ? `<p class="provider-role">${esc(p.role)}</p>` : ''}
+          ${p.bio ? `<div class="provider-bio">${paragraphs(p.bio)}</div>` : ''}
+        </article>`,
+          )
+          .join('')}
+      </div>
+    </div>
+  </section>
+
+  `
+      : ''
+  }<section id="schedule" class="section section-tint" aria-labelledby="schedule-title">
     <div class="container">
       <div class="section-head">
         <p class="eyebrow">A day with us</p>
@@ -229,7 +278,24 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
     </div>
   </section>
 
-  <section id="contact" class="section" aria-labelledby="contact-title">
+${
+    reviewsOn
+      ? `<section id="reviews" class="section" aria-labelledby="reviews-title" hidden>
+    <div class="container">
+      <div class="section-head">
+        <p class="eyebrow">What parents say</p>
+        <h2 id="reviews-title">Reviews</h2>
+        <div class="rating-summary"></div>
+      </div>
+      <div class="reviews-grid"></div>
+      <div class="reviews-actions"></div>
+      <p class="google-attrib">Reviews from Google</p>
+    </div>
+  </section>
+
+  `
+      : ''
+  }<section id="contact" class="section${reviewsOn ? ' section-tint' : ''}" aria-labelledby="contact-title">
     <div class="container contact-inner">
       <div class="contact-info">
         <p class="eyebrow">Get in touch</p>
@@ -238,7 +304,7 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
         <ul class="contact-list">
           ${site.phone ? `<li>${ICONS.phone}<a href="${esc(telHref(site.phone))}">${esc(site.phone)}</a></li>` : ''}
           ${site.email ? `<li>${ICONS.mail}<a href="mailto:${esc(site.email)}">${esc(site.email)}</a></li>` : ''}
-          ${site.area ? `<li>${ICONS.pin}<span>${esc(site.area)}</span></li>` : ''}
+          ${site.address || site.area ? `<li>${ICONS.pin}<span>${esc(site.address || site.area)}</span></li>` : ''}
           ${site.hours.map((h) => `<li>${ICONS.clock}<span>${esc(h.days)}${h.days && h.time ? ': ' : ''}${esc(h.time)}</span></li>`).join('')}
         </ul>
       </div>
@@ -263,6 +329,18 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
         <p class="form-status" role="status" aria-live="polite"></p>
       </form>
     </div>
+    ${
+      site.address
+        ? `<div class="container map-wrap">
+      <iframe class="map" title="Map showing ${esc(site.name)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+        src="https://www.google.com/maps?q=${esc(encodeURIComponent(mapQuery))}&amp;output=embed"></iframe>
+      <div class="map-bar">
+        <span>${ICONS.pin} ${esc(site.address)}</span>
+        <a class="btn btn-primary btn-sm" href="${esc(directionsUrl)}" target="_blank" rel="noopener">Get directions</a>
+      </div>
+    </div>`
+        : ''
+    }
   </section>
 </main>
 
@@ -290,5 +368,5 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
 <script>window.GALLERY=${JSON.stringify(gallery.map((p) => ({ src: `/media/${p.id}`, caption: p.caption }))).replace(/</g, '\\u003c')};</script>
 <script src="/assets/site.js" defer></script>
 </body>
-</html>`;
+</html>`);
 }
