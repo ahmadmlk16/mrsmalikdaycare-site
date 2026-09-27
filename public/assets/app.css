@@ -150,7 +150,12 @@ img { max-width: 100%; display: block; }
 
 /* Modal */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(30, 24, 18, 0.5); display: grid; place-items: center; padding: 16px; z-index: 100; }
-.modal { width: min(460px, 100%); }
+.modal { width: min(560px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; }
+.check { display: flex; gap: 10px; align-items: center; font-weight: 600; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--orange); }
+.family-details { grid-column: 1 / -1; }
+.family-details summary { cursor: pointer; font-weight: 700; color: var(--blue); font-size: 0.92rem; }
+.family-details .kv { margin-top: 8px; }
 .cred { background: #fcf8f3; border: 1px dashed #e0cdb6; border-radius: 12px; padding: 14px; font-family: ui-monospace, Consolas, monospace; font-size: 0.95rem; margin-bottom: 14px; word-break: break-all; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
@@ -173,3 +178,7 @@ img { max-width: 100%; display: block; }
 .portal-grid button { padding: 0; border: 0; background: #f3ebe1; border-radius: 14px; overflow: hidden; aspect-ratio: 1; cursor: zoom-in; }
 .portal-grid img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
 .portal-grid button:hover img { transform: scale(1.03); }
+@media (max-width: 560px) {
+  .topbar-inner { flex-wrap: wrap; height: auto; min-height: 64px; padding: 10px 16px; }
+  .topbar .who { flex-wrap: wrap; }
+}

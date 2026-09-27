@@ -4,7 +4,7 @@ Website for Mrs. Malik's Daycare, hosted on Cloudflare Pages (free tier).
 
 - **Public homepage** (`/`): cover, story, daily schedule, FAQ, gallery, and a contact / schedule-a-visit form that emails `mrsmalikdaycare@gmail.com`.
 - **Admin dashboard** (`/admin`): edit homepage text, hours, FAQs, and photos; manage gallery photos; create family accounts and upload private photos for each family; read inquiries.
-- **Family portal** (`/portal`): enrolled families log in to see and download their own photos. No self-registration: accounts are created by an admin.
+- **Family portal** (`/portal`): enrolled families log in to see and download their own photos and keep their contact and emergency info up to date. No self-registration: accounts are created by an admin.
 
 ## Branches
 
@@ -28,6 +28,7 @@ functions/         Cloudflare Pages Functions (routes)
 src/               server code shared by the functions
   api.js           all API endpoints
   auth.js          password hashing (PBKDF2), sessions, rate limiting
+  profile.js       admin/family contact fields (phone, address, emergency contact)
   db.js            D1 schema (auto-created on first request)
   content.js       default homepage content + validation
   render.js        homepage HTML
@@ -53,7 +54,7 @@ dev/server.mjs     local test server (Node 22+, no install needed)
 | `SETUP_KEY` | Secret | One-time key used to create the first admin at `/login` |
 | `RESEND_API_KEY` | Secret | Sends inquiry emails (resend.com) |
 | `EMAIL_FROM` | Text (optional) | e.g. `Mrs. Malik's Daycare <hello@mrsmalikdaycare.com>` once the domain is verified in Resend |
-| `INQUIRY_TO` | Text (optional) | Defaults to `mrsmalikdaycare@gmail.com` |
+| `INQUIRY_TO` | Text (optional) | Daycare inbox, defaults to `mrsmalikdaycare@gmail.com`. Every admin with "Email me when someone sends an inquiry" turned on (Account & admins) is also emailed. |
 
 Database tables are created automatically; there are no migrations to run.
 

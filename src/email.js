@@ -1,11 +1,12 @@
 // Sends inquiry emails through Resend (https://resend.com, free tier).
 // Needs the RESEND_API_KEY secret. Optional: EMAIL_FROM, INQUIRY_TO.
+// Sent to the daycare inbox (INQUIRY_TO) plus every admin with email alerts on.
 import { esc } from './util.js';
 
 const DEFAULT_TO = 'mrsmalikdaycare@gmail.com';
 const DEFAULT_FROM = "Mrs. Malik's Daycare Website <onboarding@resend.dev>";
 
-export async function sendInquiryEmail(env, inquiry) {
+export async function sendInquiryEmail(env, inquiry, extraRecipients = []) {
   if (!env.RESEND_API_KEY) return { sent: false, reason: 'RESEND_API_KEY is not set' };
 
   const kindLabel = inquiry.kind === 'tour' ? 'Visit request' : 'Inquiry';
@@ -29,12 +30,15 @@ export async function sendInquiryEmail(env, inquiry) {
     </div>`;
   const text = `${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n${inquiry.message}`;
 
+  // The daycare inbox plus every admin who wants email alerts (no duplicates, max 50).
+  const recipients = [...new Set([env.INQUIRY_TO || DEFAULT_TO, ...extraRecipients].map((e) => e.toLowerCase()))].slice(0, 50);
+
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       from: env.EMAIL_FROM || DEFAULT_FROM,
-      to: [env.INQUIRY_TO || DEFAULT_TO],
+      to: recipients,
       reply_to: inquiry.email,
       subject: `${kindLabel} from ${inquiry.name}`,
       html,

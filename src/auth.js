@@ -77,7 +77,7 @@ export async function currentUser(request, env) {
   const d = await db(env);
   const user = await d
     .prepare(
-      `SELECT u.id, u.email, u.name, u.role, u.children, u.must_change_password
+      `SELECT u.id, u.email, u.name, u.role, u.children, u.profile, u.must_change_password
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.id = ?1 AND s.expires_at > ?2 AND u.active = 1`,
     )

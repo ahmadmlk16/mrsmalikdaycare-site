@@ -15,6 +15,7 @@ import {
 } from './auth.js';
 import { db, getSite, saveSite } from './db.js';
 import { sendInquiryEmail } from './email.js';
+import { cleanProfile, parseProfile } from './profile.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, randomId, readJson, sha256, str } from './util.js';
 
 const MAX_UPLOAD = 10 * 1024 * 1024;
@@ -60,6 +61,7 @@ function publicUser(u) {
     role: u.role,
     children: u.children || '',
     mustChangePassword: !!u.must_change_password,
+    profile: cleanProfile(u.role, {}, parseProfile(u.profile)),
   };
 }
 
@@ -117,6 +119,32 @@ route('POST', '/api/account/password', async ({ request, env }) => {
     .bind(user.id, token ? await sha256(token) : '')
     .run();
   return json({ ok: true });
+});
+
+// Update your own contact details. Families edit their contact info; admins
+// can also change their name, login email, and notification preference.
+route('PATCH', '/api/account/profile', async ({ request, env }) => {
+  const user = await requireUser(request, env);
+  const body = await readJson(request);
+  const d = await db(env);
+  const profile = cleanProfile(user.role, body.profile || {}, parseProfile(user.profile));
+  let { name, email } = user;
+  if (user.role === 'admin') {
+    if (body.name !== undefined) name = str(body.name, 100);
+    if (body.email !== undefined) email = str(body.email, 200).toLowerCase();
+    if (!name) fail(400, 'Please enter a name.');
+    if (!isEmail(email)) fail(400, 'Please enter a valid email.');
+    if (email !== user.email.toLowerCase()) {
+      const taken = await d.prepare(`SELECT id FROM users WHERE email = ?1 AND id != ?2`).bind(email, user.id).first();
+      if (taken) fail(409, 'Another account already uses that email.');
+    }
+  }
+  await d
+    .prepare(`UPDATE users SET name = ?1, email = ?2, profile = ?3 WHERE id = ?4`)
+    .bind(name, email, JSON.stringify(profile), user.id)
+    .run();
+  const fresh = await d.prepare(`SELECT * FROM users WHERE id = ?1`).bind(user.id).first();
+  return json({ user: publicUser(fresh) });
 });
 
 /* --------------------------- First-time admin setup ------------------------ */
@@ -200,7 +228,11 @@ route('POST', '/api/inquiry', async ({ request, env }) => {
 
   let result;
   try {
-    result = await sendInquiryEmail(env, inquiry);
+    const { results: admins } = await d
+      .prepare(`SELECT email, profile FROM users WHERE role = 'admin' AND active = 1`)
+      .all();
+    const adminEmails = admins.filter((a) => parseProfile(a.profile).notifyEmail !== false).map((a) => a.email);
+    result = await sendInquiryEmail(env, inquiry, adminEmails);
   } catch (err) {
     result = { sent: false, reason: String(err) };
   }
@@ -365,7 +397,7 @@ route('GET', '/api/admin/families', async ({ request, env }) => {
   const d = await db(env);
   const { results } = await d
     .prepare(
-      `SELECT u.id, u.email, u.name, u.children, u.active, u.must_change_password, u.created_at, u.last_login_at,
+      `SELECT u.id, u.email, u.name, u.children, u.profile, u.active, u.must_change_password, u.created_at, u.last_login_at,
               (SELECT COUNT(*) FROM photos p WHERE p.family_id = u.id) AS photo_count
        FROM users u WHERE u.role = 'family' ORDER BY u.name COLLATE NOCASE`,
     )
@@ -376,6 +408,7 @@ route('GET', '/api/admin/families', async ({ request, env }) => {
       email: f.email,
       name: f.name,
       children: f.children,
+      profile: cleanProfile('family', {}, parseProfile(f.profile)),
       active: !!f.active,
       mustChangePassword: !!f.must_change_password,
       createdAt: f.created_at,
@@ -396,10 +429,18 @@ async function createAccount(env, body, role) {
   const password = tempPassword();
   const res = await d
     .prepare(
-      `INSERT INTO users (email, name, role, children, password_hash, must_change_password, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6)`,
+      `INSERT INTO users (email, name, role, children, profile, password_hash, must_change_password, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)`,
     )
-    .bind(email, name, role, str(body.children, 300), await hashPassword(password), now())
+    .bind(
+      email,
+      name,
+      role,
+      str(body.children, 300),
+      JSON.stringify(cleanProfile(role, body.profile || {})),
+      await hashPassword(password),
+      now(),
+    )
     .run();
   return { id: res.meta.last_row_id, email, name, tempPassword: password };
 }
@@ -431,10 +472,11 @@ route('PATCH', '/api/admin/families/:id', async ({ request, env, params }) => {
   if (!name) fail(400, 'Please enter a name.');
   const children = body.children !== undefined ? str(body.children, 300) : fam.children;
   const active = body.active !== undefined ? (body.active ? 1 : 0) : fam.active;
+  const profile = cleanProfile('family', body.profile || {}, parseProfile(fam.profile));
   const stmts = [
     d
-      .prepare(`UPDATE users SET email = ?1, name = ?2, children = ?3, active = ?4 WHERE id = ?5`)
-      .bind(email, name, children, active, fam.id),
+      .prepare(`UPDATE users SET email = ?1, name = ?2, children = ?3, active = ?4, profile = ?5 WHERE id = ?6`)
+      .bind(email, name, children, active, JSON.stringify(profile), fam.id),
   ];
   if (!active) stmts.push(d.prepare(`DELETE FROM sessions WHERE user_id = ?1`).bind(fam.id));
   await d.batch(stmts);
@@ -474,9 +516,11 @@ route('GET', '/api/admin/admins', async ({ request, env }) => {
   await requireUser(request, env, 'admin');
   const d = await db(env);
   const { results } = await d
-    .prepare(`SELECT id, email, name, last_login_at FROM users WHERE role = 'admin' ORDER BY name COLLATE NOCASE`)
+    .prepare(`SELECT id, email, name, profile, last_login_at FROM users WHERE role = 'admin' ORDER BY name COLLATE NOCASE`)
     .all();
-  return json({ admins: results });
+  return json({
+    admins: results.map((a) => ({ ...a, profile: cleanProfile('admin', {}, parseProfile(a.profile)) })),
+  });
 });
 
 route('POST', '/api/admin/admins', async ({ request, env }) => {

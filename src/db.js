@@ -61,12 +61,25 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS attempts_key ON attempts(key, at)`,
 ];
 
+// Columns added after the first release. Each is added once if missing.
+const ADDED_COLUMNS = [
+  ['users', 'profile', `ALTER TABLE users ADD COLUMN profile TEXT NOT NULL DEFAULT '{}'`],
+];
+
+async function migrate(DB) {
+  await DB.batch(SCHEMA.map((sql) => DB.prepare(sql)));
+  for (const [table, column, sql] of ADDED_COLUMNS) {
+    const { results } = await DB.prepare(`PRAGMA table_info(${table})`).all();
+    if (!results.some((c) => c.name === column)) await DB.prepare(sql).run();
+  }
+}
+
 let ready = null;
 
 export function db(env) {
   if (!env.DB) fail(500, 'Database is not connected yet (missing DB binding).');
   if (!ready) {
-    ready = env.DB.batch(SCHEMA.map((sql) => env.DB.prepare(sql))).catch((err) => {
+    ready = migrate(env.DB).catch((err) => {
       ready = null;
       throw err;
     });

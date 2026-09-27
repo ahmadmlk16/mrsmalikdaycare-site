@@ -1,5 +1,5 @@
 (async () => {
-  const { api, esc, toast, modal, confirmDialog, uploadPhoto, pickFiles, lightbox, fmtDate, logout } = App;
+  const { api, esc, toast, modal, confirmDialog, uploadPhoto, pickFiles, lightbox, fmtDate, logout, familyProfileFields, formBody } = App;
   const main = document.getElementById('main');
   let me;
   let dirty = false;
@@ -475,7 +475,8 @@
     return `
       <label class="field"><span>Family name <small>(e.g. "The Johnson family")</small></span><input name="name" required value="${esc(f.name || '')}" maxlength="100"></label>
       <label class="field"><span>Parent's email <small>(used to log in)</small></span><input name="email" type="email" required value="${esc(f.email || '')}" maxlength="200"></label>
-      <label class="field"><span>Child / children's names <small>(optional)</small></span><input name="children" value="${esc(f.children || '')}" maxlength="300"></label>`;
+      <label class="field"><span>Child / children's names <small>(optional)</small></span><input name="children" value="${esc(f.children || '')}" maxlength="300"></label>
+      ${familyProfileFields(f.profile)}`;
   }
 
   async function renderFamilies(sub) {
@@ -499,7 +500,7 @@
               e.preventDefault();
               const msg = m.querySelector('.msg');
               try {
-                const res = await api('/api/admin/families', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
+                const res = await api('/api/admin/families', { method: 'POST', body: formBody(e.target) });
                 close();
                 await showCredentials('Account created', res.email, res.tempPassword);
                 renderFamilies();
@@ -519,9 +520,19 @@
         <div>
           <h3>${esc(f.name)} ${f.active ? '' : '<span class="badge red">Deactivated</span>'}
             ${f.mustChangePassword && f.active ? '<span class="badge">Hasn\'t logged in yet</span>' : ''}</h3>
-          <div class="sub">${esc(f.email)}${f.children ? ' · ' + esc(f.children) : ''}</div>
+          <div class="sub">${esc(f.email)}${f.profile.phone ? ' · ' + esc(f.profile.phone) : ''}${f.children ? ' · ' + esc(f.children) : ''}</div>
           <div class="sub">${f.photoCount} photo${f.photoCount === 1 ? '' : 's'} · Last login: ${fmtDate(f.lastLoginAt)}</div>
         </div>
+        <details class="family-details">
+          <summary>Contact &amp; emergency info</summary>
+          <div class="kv">
+            <span>Phone: <b>${esc(f.profile.phone || '—')}</b></span>
+            ${f.profile.altPhone ? `<span>Other phone: <b>${esc(f.profile.altPhone)}</b></span>` : ''}
+            <span>Address: <b>${esc(f.profile.address || '—')}</b></span>
+            <span>Emergency: <b>${f.profile.emergencyName ? esc(f.profile.emergencyName) + (f.profile.emergencyRelationship ? ' (' + esc(f.profile.emergencyRelationship) + ')' : '') + (f.profile.emergencyPhone ? ' · ' + esc(f.profile.emergencyPhone) : '') : '—'}</b></span>
+          </div>
+          ${f.profile.notes ? `<p class="body" style="margin-top:8px">${esc(f.profile.notes)}</p>` : ''}
+        </details>
         <div class="actions">
           <a class="btn btn-sm btn-primary" href="#families/${f.id}">Photos</a>
           <button class="btn btn-sm" data-a="edit">Edit</button>
@@ -538,7 +549,7 @@
               m.querySelector('form').onsubmit = async (e) => {
                 e.preventDefault();
                 try {
-                  await api(`/api/admin/families/${f.id}`, { method: 'PATCH', body: Object.fromEntries(new FormData(e.target)) });
+                  await api(`/api/admin/families/${f.id}`, { method: 'PATCH', body: formBody(e.target) });
                   close();
                   toast('Family updated');
                   renderFamilies();
@@ -594,9 +605,21 @@
   /* -------------------------------- Account -------------------------------- */
 
   async function renderAccount() {
-    const { admins } = await api('/api/admin/admins');
     main.innerHTML = `
       <div class="page-title"><h1>Account &amp; admins</h1></div>
+      <section class="card">
+        <h2>Your profile</h2>
+        <form id="profile-form" style="max-width:520px">
+          <p class="msg" hidden></p>
+          <div class="grid-2">
+            <label class="field"><span>Name</span><input name="name" required maxlength="100" value="${esc(me.name)}"></label>
+            <label class="field"><span>Mobile phone</span><input name="p.phone" type="tel" maxlength="60" value="${esc(me.profile?.phone || '')}"></label>
+          </div>
+          <label class="field"><span>Email <small>(used to log in)</small></span><input name="email" type="email" required maxlength="200" value="${esc(me.email)}"></label>
+          <label class="check"><input type="checkbox" name="p.notifyEmail" ${me.profile?.notifyEmail !== false ? 'checked' : ''}> Email me when someone sends an inquiry from the website</label>
+          <button class="btn btn-primary" type="submit" style="margin-top:14px">Save profile</button>
+        </form>
+      </section>
       <section class="card">
         <h2>Change your password</h2>
         <form id="pw-form" style="max-width:420px">
@@ -612,6 +635,23 @@
           <button class="btn btn-sm" id="add-admin">+ Add admin</button></div>
         <div class="table-list" id="admin-list"></div>
       </section>`;
+
+    const profileForm = main.querySelector('#profile-form');
+    profileForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const msg = profileForm.querySelector('.msg');
+      msg.hidden = false;
+      try {
+        ({ user: me } = await api('/api/account/profile', { method: 'PATCH', body: formBody(profileForm) }));
+        document.getElementById('who-name').textContent = me.name;
+        msg.className = 'msg ok';
+        msg.textContent = 'Profile saved.';
+        renderAccountList();
+      } catch (err) {
+        msg.className = 'msg err';
+        msg.textContent = err.message;
+      }
+    };
 
     const pwForm = main.querySelector('#pw-form');
     pwForm.onsubmit = async (e) => {
@@ -631,29 +671,36 @@
       }
     };
 
-    const list = main.querySelector('#admin-list');
-    for (const a of admins) {
-      const row = document.createElement('div');
-      row.className = 'row-card';
-      row.innerHTML = `
-        <div><h3>${esc(a.name)} ${a.id === me.id ? '<span class="badge green">You</span>' : ''}</h3>
-        <div class="sub">${esc(a.email)} · Last login: ${fmtDate(a.last_login_at)}</div></div>
-        <div class="actions">${a.id === me.id ? '' : '<button class="btn btn-sm btn-danger">Remove</button>'}</div>`;
-      const rm = row.querySelector('button');
-      if (rm)
-        rm.onclick = async () => {
-          if (!(await confirmDialog('Remove admin?', `${a.name} will no longer be able to log in.`, 'Remove'))) return;
-          await api(`/api/admin/admins/${a.id}`, { method: 'DELETE' }).catch((err) => toast(err.message, true));
-          renderAccount();
-        };
-      list.appendChild(row);
+    async function renderAccountList() {
+      const list = main.querySelector('#admin-list');
+      const { admins } = await api('/api/admin/admins');
+      list.innerHTML = '';
+      for (const a of admins) {
+        const row = document.createElement('div');
+        row.className = 'row-card';
+        row.innerHTML = `
+          <div><h3>${esc(a.name)} ${a.id === me.id ? '<span class="badge green">You</span>' : ''}
+            ${a.profile.notifyEmail ? '<span class="badge blue">Gets inquiry emails</span>' : ''}</h3>
+          <div class="sub">${esc(a.email)}${a.profile.phone ? ' · ' + esc(a.profile.phone) : ''} · Last login: ${fmtDate(a.last_login_at)}</div></div>
+          <div class="actions">${a.id === me.id ? '' : '<button class="btn btn-sm btn-danger">Remove</button>'}</div>`;
+        const rm = row.querySelector('button');
+        if (rm)
+          rm.onclick = async () => {
+            if (!(await confirmDialog('Remove admin?', `${a.name} will no longer be able to log in.`, 'Remove'))) return;
+            await api(`/api/admin/admins/${a.id}`, { method: 'DELETE' }).catch((err) => toast(err.message, true));
+            renderAccountList();
+          };
+        list.appendChild(row);
+      }
     }
+    await renderAccountList();
 
     main.querySelector('#add-admin').onclick = () =>
       modal(
         `<form><h2>Add an admin</h2><p class="msg err" hidden></p>
           <label class="field"><span>Name</span><input name="name" required maxlength="100"></label>
           <label class="field"><span>Email</span><input name="email" type="email" required maxlength="200"></label>
+          <label class="field"><span>Mobile phone <small>(optional)</small></span><input name="p.phone" type="tel" maxlength="60"></label>
           <div class="modal-actions"><button type="button" class="btn" data-close="">Cancel</button><button class="btn btn-primary" type="submit">Create admin</button></div></form>`,
         {
           onMount: (m, close) => {
@@ -661,7 +708,7 @@
             m.querySelector('form').onsubmit = async (e) => {
               e.preventDefault();
               try {
-                const res = await api('/api/admin/admins', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
+                const res = await api('/api/admin/admins', { method: 'POST', body: formBody(e.target) });
                 close();
                 await showCredentials('Admin created', res.email, res.tempPassword);
                 renderAccount();

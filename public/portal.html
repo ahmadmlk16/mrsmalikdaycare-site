@@ -14,6 +14,7 @@
   <div class="topbar-inner">
     <a class="brand" href="/"><img src="/assets/favicon.svg" alt="" width="32" height="32"> Mrs. Malik's Daycare</a>
     <div class="who">
+      <button class="btn btn-sm" id="info-btn">My family info</button>
       <button class="btn btn-sm" id="pw-btn">Change password</button>
       <button class="btn btn-sm" id="logout">Log out</button>
     </div>
@@ -28,13 +29,17 @@
       <p class="muted" id="sub" style="margin:0"></p>
     </div>
   </div>
+  <div class="msg" id="info-nudge" hidden style="background:#fff3e6;color:#8a4a17">
+    Please add your phone number and an emergency contact so Mrs. Malik can reach someone quickly.
+    <button class="btn btn-sm" id="nudge-btn" style="margin-left:8px">Add now</button>
+  </div>
   <div class="portal-grid" id="grid"></div>
 </main>
 
 <script src="/assets/app.js"></script>
 <script>
 (async () => {
-  const { api, esc, modal, lightbox, logout, toast } = App;
+  const { api, esc, modal, lightbox, logout, toast, familyProfileFields, formBody } = App;
   let user;
   try { ({ user } = await api('/api/session')); } catch {}
   if (!user || user.mustChangePassword) return (location.href = '/login');
@@ -60,6 +65,35 @@
     b.onclick = () => lightbox(photos, i, { download: true });
     grid.appendChild(b);
   });
+
+  const nudge = document.getElementById('info-nudge');
+  const updateNudge = () => (nudge.hidden = !!(user.profile.phone && user.profile.emergencyName && user.profile.emergencyPhone));
+  updateNudge();
+  const openInfo = () =>
+    modal(`<form><h2>My family info</h2>
+      <p class="muted">Keep this up to date so Mrs. Malik can reach you or your emergency contact.</p>
+      <p class="msg err" hidden></p>
+      ${familyProfileFields(user.profile)}
+      <div class="modal-actions"><button type="button" class="btn" data-close="">Cancel</button><button class="btn btn-primary" type="submit">Save</button></div></form>`, {
+      onMount: (m, close) => {
+        m.querySelector('input').focus();
+        m.querySelector('form').onsubmit = async (e) => {
+          e.preventDefault();
+          try {
+            ({ user } = await api('/api/account/profile', { method: 'PATCH', body: formBody(e.target) }));
+            close();
+            updateNudge();
+            toast('Your info was saved');
+          } catch (err) {
+            const msg = m.querySelector('.msg');
+            msg.textContent = err.message;
+            msg.hidden = false;
+          }
+        };
+      },
+    });
+  document.getElementById('info-btn').onclick = openInfo;
+  document.getElementById('nudge-btn').onclick = openInfo;
 
   document.getElementById('pw-btn').onclick = () =>
     modal(`<form><h2>Change password</h2><p class="msg err" hidden></p>

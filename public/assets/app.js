@@ -171,5 +171,36 @@ window.App = (() => {
     location.href = '/login';
   }
 
-  return { api, esc, toast, modal, confirmDialog, uploadPhoto, pickFiles, lightbox, fmtDate, logout };
+  // Shared with the family portal: contact & emergency info fields.
+  function familyProfileFields(p = {}) {
+    const v = (k) => esc(p[k] || '');
+    return `
+      <h3 style="margin-top:8px">Contact info</h3>
+      <div class="grid-2">
+        <label class="field"><span>Phone</span><input name="p.phone" type="tel" value="${v('phone')}" maxlength="60"></label>
+        <label class="field"><span>Other phone <small>(optional)</small></span><input name="p.altPhone" type="tel" value="${v('altPhone')}" maxlength="60"></label>
+      </div>
+      <label class="field"><span>Home address</span><textarea name="p.address" rows="2" maxlength="300">${v('address')}</textarea></label>
+      <h3 style="margin-top:8px">Emergency contact</h3>
+      <div class="grid-2">
+        <label class="field"><span>Name</span><input name="p.emergencyName" value="${v('emergencyName')}" maxlength="100"></label>
+        <label class="field"><span>Relationship</span><input name="p.emergencyRelationship" value="${v('emergencyRelationship')}" maxlength="60" placeholder="e.g. Grandmother"></label>
+      </div>
+      <label class="field"><span>Emergency phone</span><input name="p.emergencyPhone" type="tel" value="${v('emergencyPhone')}" maxlength="60"></label>
+      <label class="field"><span>Notes <small>(allergies, pickup instructions, etc.)</small></span><textarea name="p.notes" rows="3" maxlength="2000">${v('notes')}</textarea></label>`;
+  }
+
+  // Turn form fields into { name, email, ..., profile: { ... } }.
+  function formBody(form) {
+    const body = { profile: {} };
+    for (const [k, val] of new FormData(form)) {
+      if (k.startsWith('p.')) body.profile[k.slice(2)] = val;
+      else body[k] = val;
+    }
+    form.querySelectorAll('input[type=checkbox][name^="p."]').forEach((c) => (body.profile[c.name.slice(2)] = c.checked));
+    return body;
+  }
+
+
+  return { api, esc, toast, modal, confirmDialog, uploadPhoto, pickFiles, lightbox, fmtDate, logout, familyProfileFields, formBody };
 })();
