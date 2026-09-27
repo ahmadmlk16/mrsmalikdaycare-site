@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin | Mrs. Malik's Daycare</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/admin"><img src="/assets/favicon.svg" alt="" width="32" height="32"> Daycare admin</a>
+    <div class="who">
+      <span class="name muted" id="who-name"></span>
+      <a class="btn btn-sm" href="/" target="_blank" rel="noopener">View website</a>
+      <button class="btn btn-sm" id="logout">Log out</button>
+    </div>
+  </div>
+</header>
+
+<div class="shell" id="shell" hidden>
+  <nav class="sidenav" aria-label="Admin sections">
+    <button data-tab="inquiries">Inquiries <span class="count" id="unread-count" hidden></span></button>
+    <button data-tab="content">Homepage</button>
+    <button data-tab="gallery">Gallery photos</button>
+    <button data-tab="families">Families</button>
+    <button data-tab="account">Account &amp; admins</button>
+  </nav>
+  <main class="main" id="main"></main>
+</div>
+
+<script src="/assets/app.js"></script>
+<script src="/assets/admin.js"></script>
+</body>
+</html>

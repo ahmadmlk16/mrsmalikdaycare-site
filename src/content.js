@@ -1,0 +1,83 @@
+// Default homepage content. Everything here can be edited from the admin
+// dashboard; these values are only used until the admin saves changes.
+import { str } from './util.js';
+
+export const DEFAULT_SITE = {
+  name: "Mrs. Malik's Daycare",
+  enrollmentStatus: 'Now enrolling',
+  heroTitle: 'A warm, loving home away from home',
+  heroSubtitle:
+    'Licensed family home daycare in Alexandria, VA. Small groups, home-cooked meals, and caring attention for every child.',
+  coverPhotoId: '',
+  ages: '3 months – 5 years',
+  license: 'Licensed Virginia Family Day Home',
+  phone: '(703) 000-0000',
+  email: 'mrsmalikdaycare@gmail.com',
+  area: 'Alexandria, VA 22304',
+  hours: [{ days: 'Monday – Friday', time: '7:00 AM – 6:00 PM' }],
+  storyTitle: 'Our story',
+  storyBody:
+    "Mrs. Malik opened her home to families because she believes every child deserves to feel safe, known, and loved while their parents are at work.\n\nWhat started as caring for a few neighborhood children has grown into a licensed family day home where kids learn, play, share meals, and make their first friends. With a small group, every child gets real one-on-one attention, and parents get a caregiver who treats their little ones like family.",
+  storyPhotoId: '',
+  highlights: [
+    { title: 'Licensed & inspected', text: 'State licensed family day home with regular inspections.' },
+    { title: 'CPR & First Aid', text: 'Certified in CPR and First Aid, with ongoing training every year.' },
+    { title: 'Home-cooked meals', text: 'Healthy breakfast, lunch, and snacks prepared fresh every day.' },
+  ],
+  schedule: [
+    { time: '7:00 AM', activity: 'Arrival & free play', detail: 'Warm welcomes, quiet toys, and books.' },
+    { time: '8:00 AM', activity: 'Breakfast', detail: 'A healthy start to the day.' },
+    { time: '9:00 AM', activity: 'Circle time & learning', detail: 'Songs, stories, letters, numbers, and colors.' },
+    { time: '10:00 AM', activity: 'Outdoor play', detail: 'Fresh air and running around (weather permitting).' },
+    { time: '11:30 AM', activity: 'Lunch', detail: 'Home-cooked and kid-approved.' },
+    { time: '12:30 PM', activity: 'Nap & quiet time', detail: 'Rest for little bodies and busy minds.' },
+    { time: '3:00 PM', activity: 'Snack', detail: 'Fruit, crackers, yogurt, and milk.' },
+    { time: '3:30 PM', activity: 'Arts, crafts & play', detail: 'Painting, building, pretend play, and music.' },
+    { time: '5:00 PM', activity: 'Pickup', detail: 'A quick chat with parents about the day.' },
+  ],
+  faqs: [
+    { q: 'What ages do you care for?', a: 'We care for children from 3 months to 5 years old.' },
+    { q: 'What are your hours?', a: 'We are open Monday through Friday, 7:00 AM to 6:00 PM.' },
+    { q: 'Are meals included?', a: 'Yes. Breakfast, lunch, and an afternoon snack are prepared fresh at home and included.' },
+    { q: 'Are you licensed?', a: 'Yes. We are a licensed Virginia Family Day Home and are inspected regularly.' },
+    { q: 'How do I schedule a visit?', a: 'Use the form at the bottom of this page or give us a call. We would love to meet you and your little one.' },
+  ],
+  contactIntro:
+    "Have a question or want to come see our space? Send us a message and we'll get back to you within a day.",
+};
+
+const LIMITS = { short: 120, medium: 400, long: 5000 };
+
+function list(input, max, mapItem) {
+  if (!Array.isArray(input)) return [];
+  return input.slice(0, max).map(mapItem).filter((item) => Object.values(item).some((v) => v));
+}
+
+// Accept only known fields with sane lengths, so the admin form can't store junk.
+export function cleanSite(input) {
+  const s = { ...DEFAULT_SITE, ...(input || {}) };
+  return {
+    name: str(s.name, LIMITS.short),
+    enrollmentStatus: str(s.enrollmentStatus, LIMITS.short),
+    heroTitle: str(s.heroTitle, LIMITS.short),
+    heroSubtitle: str(s.heroSubtitle, LIMITS.medium),
+    coverPhotoId: str(s.coverPhotoId, 64),
+    ages: str(s.ages, LIMITS.short),
+    license: str(s.license, LIMITS.short),
+    phone: str(s.phone, 40),
+    email: str(s.email, 200),
+    area: str(s.area, LIMITS.short),
+    hours: list(s.hours, 10, (h) => ({ days: str(h?.days, 60), time: str(h?.time, 60) })),
+    storyTitle: str(s.storyTitle, LIMITS.short),
+    storyBody: str(s.storyBody, LIMITS.long),
+    storyPhotoId: str(s.storyPhotoId, 64),
+    highlights: list(s.highlights, 6, (h) => ({ title: str(h?.title, 60), text: str(h?.text, 200) })),
+    schedule: list(s.schedule, 20, (i) => ({
+      time: str(i?.time, 20),
+      activity: str(i?.activity, 80),
+      detail: str(i?.detail, 200),
+    })),
+    faqs: list(s.faqs, 30, (f) => ({ q: str(f?.q, 200), a: str(f?.a, 2000) })),
+    contactIntro: str(s.contactIntro, LIMITS.medium),
+  };
+}

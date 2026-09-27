@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Log in | Mrs. Malik's Daycare</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <a class="auth-brand" href="/"><img src="/assets/favicon.svg" alt="" width="40" height="40"> Mrs. Malik's Daycare</a>
+
+    <form class="card" id="login-form" hidden>
+      <h1>Welcome back</h1>
+      <p class="muted">Parents and staff, log in to see your photos and updates.</p>
+      <p class="msg err" hidden></p>
+      <label class="field"><span>Email</span><input name="email" type="email" autocomplete="username" required autofocus></label>
+      <label class="field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="btn btn-primary btn-block" type="submit">Log in</button>
+      <p class="muted small" style="margin:16px 0 0">Forgot your password? Ask Mrs. Malik to reset it for you.</p>
+    </form>
+
+    <form class="card" id="change-form" hidden>
+      <h1>Choose a new password</h1>
+      <p class="muted">You're using a temporary password. Please pick your own to continue.</p>
+      <p class="msg err" hidden></p>
+      <label class="field"><span>Temporary password</span><input name="current" type="password" autocomplete="current-password" required></label>
+      <label class="field"><span>New password <small>(at least 8 characters)</small></span><input name="next" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label class="field"><span>Confirm new password</span><input name="confirm" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="btn btn-primary btn-block" type="submit">Save password</button>
+    </form>
+
+    <form class="card" id="setup-form" hidden>
+      <h1>Set up the admin account</h1>
+      <p class="muted">This only appears once, before any admin exists. Enter the setup key you saved in Cloudflare.</p>
+      <p class="msg err" hidden></p>
+      <label class="field"><span>Setup key</span><input name="setupKey" type="password" required autocomplete="off"></label>
+      <label class="field"><span>Your name</span><input name="name" required autocomplete="name"></label>
+      <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="username"></label>
+      <label class="field"><span>Password <small>(at least 8 characters)</small></span><input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+      <button class="btn btn-primary btn-block" type="submit">Create admin account</button>
+    </form>
+
+    <p class="muted small" style="text-align:center;margin-top:16px"><a href="/">&larr; Back to the website</a></p>
+  </div>
+</div>
+<script src="/assets/app.js"></script>
+<script>
+(async () => {
+  const { api } = App;
+  const forms = {
+    login: document.getElementById('login-form'),
+    change: document.getElementById('change-form'),
+    setup: document.getElementById('setup-form'),
+  };
+  const show = (name) => {
+    Object.entries(forms).forEach(([k, f]) => (f.hidden = k !== name));
+    forms[name].querySelector('input')?.focus();
+  };
+  const go = (user) => (location.href = user.role === 'admin' ? '/admin' : '/portal');
+  const bind = (form, handler) =>
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = form.querySelector('.msg');
+      const btn = form.querySelector('button[type=submit]');
+      msg.hidden = true;
+      btn.disabled = true;
+      try {
+        await handler(Object.fromEntries(new FormData(form)));
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+  bind(forms.login, async (data) => {
+    const { user } = await api('/api/login', { method: 'POST', body: data });
+    if (user.mustChangePassword) {
+      forms.change.elements.current.value = data.password;
+      show('change');
+      forms.change.elements.next.focus();
+    } else go(user);
+  });
+
+  bind(forms.change, async (data) => {
+    if (data.next !== data.confirm) throw new Error("The new passwords don't match.");
+    await api('/api/account/password', { method: 'POST', body: { current: data.current, next: data.next } });
+    const { user } = await api('/api/session');
+    go(user);
+  });
+
+  bind(forms.setup, async (data) => {
+    await api('/api/setup', { method: 'POST', body: data });
+    location.href = '/admin';
+  });
+
+  try {
+    const { user } = await api('/api/session');
+    if (user && user.mustChangePassword) return show('change');
+    if (user) return go(user);
+    const setup = await api('/api/setup');
+    show(setup.needsSetup ? 'setup' : 'login');
+  } catch {
+    show('login');
+  }
+})();
+</script>
+</body>
+</html>
