@@ -66,6 +66,8 @@ if (process.env.MOCK_GOOGLE) {
 const home = await import(path.join(root, 'functions/index.js'));
 const api = await import(path.join(root, 'functions/api/[[path]].js'));
 const media = await import(path.join(root, 'functions/media/[[path]].js'));
+const holidays = await import(path.join(root, 'functions/holidays.js'));
+const articles = await import(path.join(root, 'functions/articles.js'));
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.txt': 'text/plain' };
 
@@ -85,6 +87,8 @@ async function handle(request) {
   const { pathname } = new URL(request.url);
   const ctx = { request, env, params: {}, waitUntil() {}, next: () => serveStatic(pathname) };
   if (pathname === '/' && request.method === 'GET') return home.onRequestGet(ctx);
+  if (pathname === '/holidays' && request.method === 'GET') return holidays.onRequestGet(ctx);
+  if (pathname === '/articles' && request.method === 'GET') return articles.onRequestGet(ctx);
   if (pathname.startsWith('/api/')) return api.onRequest(ctx);
   if (pathname.startsWith('/media/')) {
     ctx.params = { path: pathname.slice(7).split('/') };

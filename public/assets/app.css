@@ -197,3 +197,17 @@ img { max-width: 100%; display: block; }
 .holiday-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
 .swatch { display: inline-flex; gap: 3px; padding: 4px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.08); flex: none; }
 .swatch i { width: 12px; height: 18px; border-radius: 4px; display: block; }
+
+/* Closed days */
+.closure-row { margin-bottom: 10px; box-shadow: none; border: 1px solid var(--line); }
+.closure-row .closure-when { display: grid; gap: 2px; }
+.suggest-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  border: 1px dashed var(--line); background: var(--bg); color: var(--ink); border-radius: 999px;
+  padding: 6px 12px; font-family: inherit; font-weight: 700; font-size: 0.85rem; cursor: pointer;
+}
+.chip span { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.chip:hover { border-color: var(--orange); color: var(--orange-dark); }
+.chip:disabled { opacity: 0.5; cursor: default; }
+.closure-row .closure-when a { overflow-wrap: anywhere; }
+.closure-row { grid-template-columns: minmax(0, 1fr) auto; }

@@ -1,6 +1,8 @@
 // Server-rendered homepage, built from the content saved in the admin dashboard.
 import { esc } from './util.js';
 import { THEMES, activeTheme, themeStyle } from './themes.js';
+import { ASSET_V } from './page-shell.js';
+import { fallingHtml } from './falling.js';
 
 const paragraphs = (text) =>
   String(text || '')
@@ -140,7 +142,7 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/site.css?v=${ASSET_V}">
 ${themeStyle(theme.key) ? `<style>${themeStyle(theme.key)}</style>` : ''}
 <script type="application/ld+json">${JSON.stringify({
     '@context': 'https://schema.org',
@@ -168,6 +170,7 @@ ${bannerText ? `<div class="holiday-banner" role="note">${esc(bannerText)}</div>
     </button>
     <nav id="site-nav" class="site-nav" aria-label="Main">
       ${nav.map(([id, label]) => `<a href="#${id}" data-nav="${id}">${label}</a>`).join('')}
+      <a href="/articles">Articles</a>
       ${loginLink}
     </nav>
   </div>
@@ -175,7 +178,7 @@ ${bannerText ? `<div class="holiday-banner" role="note">${esc(bannerText)}</div>
 
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
-    ${themeInfo.snow ? '<div class="snow" aria-hidden="true"></div>' : ''}
+    ${theme.holiday && (site.holidayEffects || previewTheme) ? fallingHtml(theme.key) : ''}
     <div class="container hero-inner">
       <div class="hero-copy">
         ${
@@ -410,6 +413,7 @@ ${
     </div>
     <div class="footer-links">
       <a href="#contact" data-kind="tour">Schedule a visit</a>
+      <a href="/articles">Articles</a>
       <a href="/login">Parent login</a>
     </div>
     <p class="copyright">&copy; ${year} ${esc(site.name)}</p>
@@ -424,7 +428,7 @@ ${
 </div>
 
 <script>window.GALLERY=${JSON.stringify(gallery.map((p) => ({ src: `/media/${p.id}`, caption: p.caption }))).replace(/</g, '\\u003c')};</script>
-<script src="/assets/site.js" defer></script>
+<script src="/assets/site.js?v=${ASSET_V}" defer></script>
 </body>
 </html>`);
 }

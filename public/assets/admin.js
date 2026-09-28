@@ -19,7 +19,7 @@
     if (dirty) e.preventDefault();
   });
 
-  const TABS = { inquiries: renderInquiries, content: renderContent, gallery: renderGallery, families: renderFamilies, account: renderAccount };
+  const TABS = { inquiries: renderInquiries, content: renderContent, closures: renderClosures, articles: renderArticles, gallery: renderGallery, families: renderFamilies, account: renderAccount };
 
   async function route() {
     const [tab, sub] = location.hash.slice(1).split('/');
@@ -238,6 +238,7 @@
         <div class="field"><span>Everyday color theme</span><div class="theme-grid" id="theme-grid"></div></div>
         <label class="check"><input type="checkbox" data-key="holidayThemes"> Automatically use a holiday theme 1 week before and after each holiday</label>
         <label class="check" style="margin-top:8px"><input type="checkbox" data-key="holidayBanner"> Show a small holiday greeting bar at the top during holidays</label>
+        <label class="check" style="margin-top:8px"><input type="checkbox" data-key="holidayEffects"> Show little falling decorations on the cover during holidays (snowflakes, pumpkins, crescents, hearts…)</label>
         <div class="field" style="margin-top:14px"><span>Holidays to celebrate <small>(click Preview to see each one)</small></span><div class="holiday-list" id="holiday-list"></div></div>
         <p class="msg" id="theme-now" style="background:#f3ebe1;margin:0"></p>
       </section>
@@ -499,6 +500,364 @@
         saveBtn.textContent = 'Save changes';
       }
     };
+  }
+
+  /* ------------------------------ Closed days ------------------------------ */
+
+  const fmtDay = (iso, opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) =>
+    new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
+  const fmtRange = (c) => (c.end ? `${fmtDay(c.start)} – ${fmtDay(c.end)}` : fmtDay(c.start));
+  const todayIso = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+
+  async function renderClosures() {
+    let { closures, suggestions } = await api('/api/admin/closures');
+    const pageUrl = location.origin + '/holidays';
+    main.innerHTML = `
+      <div class="page-title"><h1>Closed days</h1><a class="btn btn-sm" href="/holidays" target="_blank" rel="noopener">View page</a></div>
+      <p class="muted" style="margin-top:-8px">Days the daycare is closed. They're shown on a separate page (not on the homepage) that families can open from their portal, or you can send them the link.</p>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Add a closed day</h2><p class="muted">Pick one day, or turn on "Several days" for a break like winter vacation.</p></div></div>
+        <form id="closure-form">
+          <div class="grid-2">
+            <label class="field"><span>What for? <small>(e.g. Thanksgiving, Family vacation)</small></span><input name="label" maxlength="100" required></label>
+            <label class="field"><span>Date</span><input name="start" type="date" required></label>
+          </div>
+          <label class="check" style="margin-bottom:14px"><input type="checkbox" id="multi"> Several days in a row</label>
+          <div class="grid-2" id="end-row" hidden>
+            <span></span>
+            <label class="field"><span>Last day closed</span><input name="end" type="date"></label>
+          </div>
+          <label class="field"><span>Note for parents <small>(optional)</small></span><input name="note" maxlength="300" placeholder="e.g. We reopen Monday at 7:00 AM"></label>
+          <button class="btn btn-primary" type="submit">Add closed day</button>
+        </form>
+        <div id="suggest"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Upcoming</h2></div></div>
+        <div id="upcoming"></div>
+      </section>
+
+      <section class="card" id="past-card">
+        <div class="card-head"><div><h2>Past</h2><p class="muted">Already over, so hidden from the page. Kept here for your records.</p></div>
+          <button class="btn btn-sm" id="clear-past" type="button">Remove all past days</button></div>
+        <div id="past"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Page text &amp; link</h2></div></div>
+        <label class="field"><span>Page title</span><input id="c-title" maxlength="100"></label>
+        <label class="field"><span>Intro text</span><textarea id="c-intro" rows="2" maxlength="1000"></textarea></label>
+        <button class="btn btn-primary" id="c-save" type="button">Save text</button>
+        <div class="field" style="margin-top:20px"><span>Link to share with families</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><input readonly value="${esc(pageUrl)}" style="flex:1;min-width:220px" id="c-link"><button class="btn" type="button" id="c-copy">Copy link</button></div>
+        </div>
+      </section>`;
+
+    const form = main.querySelector('#closure-form');
+    const multi = main.querySelector('#multi');
+    const endRow = main.querySelector('#end-row');
+    multi.onchange = () => {
+      endRow.hidden = !multi.checked;
+      form.end.required = multi.checked;
+      if (!multi.checked) form.end.value = '';
+    };
+    form.start.onchange = () => (form.end.min = form.start.value);
+    main.querySelector('#c-title').value = closures.title;
+    main.querySelector('#c-intro').value = closures.intro;
+
+    const save = async (next, msg) => {
+      const res = await api('/api/admin/closures', { method: 'PUT', body: { closures: next } });
+      closures = res.closures;
+      suggestions = res.suggestions;
+      draw();
+      if (msg) toast(msg);
+    };
+
+    const row = (c, i) => `
+      <div class="row-card closure-row">
+        <div class="closure-when"><strong>${esc(c.name || 'Closed')}</strong><span class="muted">${esc(fmtRange(c))}</span>${c.note ? `<span class="small">${esc(c.note)}</span>` : ''}</div>
+        <div class="actions">
+          <button class="btn btn-sm" data-edit="${i}" type="button">Edit</button>
+          <button class="btn btn-sm btn-danger" data-del="${i}" type="button">Remove</button>
+        </div>
+      </div>`;
+
+    function draw() {
+      const today = todayIso();
+      const all = closures.days.map((c, i) => ({ c, i }));
+      const up = all.filter(({ c }) => (c.end || c.start) >= today);
+      const past = all.filter(({ c }) => (c.end || c.start) < today).reverse();
+      main.querySelector('#upcoming').innerHTML = up.length
+        ? up.map(({ c, i }) => row(c, i)).join('')
+        : '<p class="muted">No upcoming closed days. Add one above.</p>';
+      main.querySelector('#past-card').hidden = !past.length;
+      main.querySelector('#past').innerHTML = past.map(({ c, i }) => row(c, i)).join('');
+      main.querySelector('#suggest').innerHTML = suggestions.length
+        ? `<div class="suggest"><p class="muted small" style="margin:18px 0 8px">Quick add common days off (click to add):</p>
+            <div class="suggest-list">${suggestions
+              .map((s, i) => `<button type="button" class="chip" data-sug="${i}">+ ${esc(s.name)} <span>${esc(s.end ? `${fmtDay(s.start, { month: 'short', day: 'numeric' })}–${fmtDay(s.end, { day: 'numeric' })}` : fmtDay(s.start, { month: 'short', day: 'numeric' }))}</span></button>`)
+              .join('')}</div></div>`
+        : '';
+
+      main.querySelectorAll('[data-sug]').forEach((b) =>
+        (b.onclick = async () => {
+          b.disabled = true;
+          const s = suggestions[b.dataset.sug];
+          try {
+            await save({ ...closures, days: [...closures.days, s] }, `${s.name} added`);
+          } catch (err) {
+            toast(err.message, true);
+            b.disabled = false;
+          }
+        }),
+      );
+      main.querySelectorAll('[data-del]').forEach((b) =>
+        (b.onclick = async () => {
+          const c = closures.days[b.dataset.del];
+          if (!(await confirmDialog('Remove this closed day?', `${c.name || 'Closed'} · ${fmtRange(c)}`, 'Remove'))) return;
+          try {
+            await save({ ...closures, days: closures.days.filter((_, i) => i !== Number(b.dataset.del)) }, 'Removed');
+          } catch (err) {
+            toast(err.message, true);
+          }
+        }),
+      );
+      main.querySelectorAll('[data-edit]').forEach((b) =>
+        (b.onclick = () => {
+          const idx = Number(b.dataset.edit);
+          const c = closures.days[idx];
+          modal(`<form><h2>Edit closed day</h2><p class="msg err" hidden></p>
+              <label class="field"><span>What for?</span><input name="label" maxlength="100" value="${esc(c.name)}" required></label>
+              <div class="grid-2">
+                <label class="field"><span>First day</span><input name="start" type="date" value="${esc(c.start)}" required></label>
+                <label class="field"><span>Last day <small>(blank if one day)</small></span><input name="end" type="date" value="${esc(c.end)}"></label>
+              </div>
+              <label class="field"><span>Note for parents</span><input name="note" maxlength="300" value="${esc(c.note)}"></label>
+              <div class="modal-actions"><button type="button" class="btn" data-close>Cancel</button><button class="btn btn-primary">Save</button></div>
+            </form>`, { onMount: (dlg, close) => {
+            const f = dlg.querySelector('form');
+            f.onsubmit = async (e) => {
+              e.preventDefault();
+              const err = f.querySelector('.msg');
+              const d = { name: f.label.value.trim(), start: f.start.value, end: f.end.value, note: f.note.value.trim() };
+              if (d.end && d.end < d.start) {
+                err.textContent = 'The last day must be on or after the first day.';
+                err.hidden = false;
+                return;
+              }
+              try {
+                await save({ ...closures, days: closures.days.map((x, i) => (i === idx ? d : x)) }, 'Saved');
+                close();
+              } catch (ex) {
+                err.textContent = ex.message;
+                err.hidden = false;
+              }
+            };
+          } });
+        }),
+      );
+    }
+    draw();
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const d = { name: form.label.value.trim(), start: form.start.value, end: multi.checked ? form.end.value : '', note: form.note.value.trim() };
+      if (d.end && d.end < d.start) return toast('The last day must be on or after the first day.', true);
+      const btn = form.querySelector('button[type=submit]');
+      btn.disabled = true;
+      try {
+        await save({ ...closures, days: [...closures.days, d] }, `${d.name} added`);
+        form.reset();
+        multi.onchange();
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    main.querySelector('#clear-past').onclick = async () => {
+      if (!(await confirmDialog('Remove all past days?', 'They are already hidden from the page. This only cleans up this list.', 'Remove'))) return;
+      const today = todayIso();
+      try {
+        await save({ ...closures, days: closures.days.filter((c) => (c.end || c.start) >= today) }, 'Past days removed');
+      } catch (err) {
+        toast(err.message, true);
+      }
+    };
+    main.querySelector('#c-save').onclick = async () => {
+      try {
+        await save({ ...closures, title: main.querySelector('#c-title').value, intro: main.querySelector('#c-intro').value }, 'Page text saved');
+      } catch (err) {
+        toast(err.message, true);
+      }
+    };
+    main.querySelector('#c-copy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(pageUrl);
+        toast('Link copied');
+      } catch {
+        main.querySelector('#c-link').select();
+      }
+    };
+  }
+
+  /* -------------------------------- Articles -------------------------------- */
+
+  async function renderArticles() {
+    let { articles } = await api('/api/admin/articles');
+    main.innerHTML = `
+      <div class="page-title"><h1>Articles</h1><a class="btn btn-sm" href="/articles" target="_blank" rel="noopener">View page</a></div>
+      <p class="muted" style="margin-top:-8px">Links shown on the Articles page (linked from the homepage menu). Link to pages on this site, like the closed days page, or to articles on other websites.</p>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Add a link</h2></div></div>
+        <form id="article-form">
+          <div class="grid-2">
+            <label class="field"><span>Title</span><input name="heading" maxlength="150" required placeholder="e.g. Daycare holidays"></label>
+            <label class="field"><span>Link <small>(a web address, or a page here like /holidays)</small></span><input name="link" required placeholder="https://… or /holidays"></label>
+          </div>
+          <label class="field"><span>Short description <small>(optional)</small></span><input name="description" maxlength="500"></label>
+          <button class="btn btn-primary" type="submit">Add link</button>
+        </form>
+        <div id="page-sug"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Links on the page</h2><p class="muted">Shown in this order. Use the arrows to reorder.</p></div></div>
+        <div id="article-rows"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Page text</h2></div></div>
+        <label class="field"><span>Page title</span><input id="a-title" maxlength="100"></label>
+        <label class="field"><span>Intro text</span><textarea id="a-intro" rows="2" maxlength="1000"></textarea></label>
+        <button class="btn btn-primary" id="a-save" type="button">Save text</button>
+      </section>`;
+
+    const PAGES = [
+      { title: 'Daycare holidays', url: '/holidays', description: 'Days the daycare is closed.' },
+    ];
+    const form = main.querySelector('#article-form');
+    main.querySelector('#a-title').value = articles.title;
+    main.querySelector('#a-intro').value = articles.intro;
+
+    const save = async (next, msg) => {
+      const res = await api('/api/admin/articles', { method: 'PUT', body: { articles: next } });
+      articles = res.articles;
+      draw();
+      if (msg) toast(msg);
+    };
+    const attempt = (fn) => async (...a) => {
+      try {
+        await fn(...a);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    };
+
+    function draw() {
+      const links = articles.links;
+      main.querySelector('#article-rows').innerHTML = links.length
+        ? links
+            .map(
+              (l, i) => `
+          <div class="row-card closure-row">
+            <div class="closure-when"><strong>${esc(l.title)}</strong>
+              <a class="small" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.url)}</a>
+              ${l.description ? `<span class="small muted">${esc(l.description)}</span>` : ''}</div>
+            <div class="actions">
+              <button class="icon-btn" data-up="${i}" type="button" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
+              <button class="icon-btn" data-down="${i}" type="button" aria-label="Move down" ${i === links.length - 1 ? 'disabled' : ''}>&darr;</button>
+              <button class="btn btn-sm" data-edit="${i}" type="button">Edit</button>
+              <button class="btn btn-sm btn-danger" data-del="${i}" type="button">Remove</button>
+            </div>
+          </div>`,
+            )
+            .join('')
+        : '<p class="muted">No links yet. Add one above.</p>';
+      const missing = PAGES.filter((p) => !links.some((l) => l.url === p.url));
+      main.querySelector('#page-sug').innerHTML = missing.length
+        ? `<p class="muted small" style="margin:18px 0 8px">Quick add a page from this site:</p><div class="suggest-list">${missing
+            .map((p, i) => `<button type="button" class="chip" data-page="${i}">+ ${esc(p.title)} <span>${esc(p.url)}</span></button>`)
+            .join('')}</div>`
+        : '';
+
+      main.querySelectorAll('[data-page]').forEach((b) => (b.onclick = attempt(() => save({ ...articles, links: [...links, missing[b.dataset.page]] }, 'Link added'))));
+      const move = (i, j) => {
+        const next = [...links];
+        [next[i], next[j]] = [next[j], next[i]];
+        return save({ ...articles, links: next });
+      };
+      main.querySelectorAll('[data-up]').forEach((b) => (b.onclick = attempt(() => move(+b.dataset.up, +b.dataset.up - 1))));
+      main.querySelectorAll('[data-down]').forEach((b) => (b.onclick = attempt(() => move(+b.dataset.down, +b.dataset.down + 1))));
+      main.querySelectorAll('[data-del]').forEach(
+        (b) =>
+          (b.onclick = attempt(async () => {
+            const l = links[b.dataset.del];
+            if (!(await confirmDialog('Remove this link?', l.title, 'Remove'))) return;
+            await save({ ...articles, links: links.filter((_, i) => i !== +b.dataset.del) }, 'Removed');
+          })),
+      );
+      main.querySelectorAll('[data-edit]').forEach(
+        (b) =>
+          (b.onclick = () => {
+            const idx = +b.dataset.edit;
+            const l = links[idx];
+            modal(
+              `<form><h2>Edit link</h2><p class="msg err" hidden></p>
+                <label class="field"><span>Title</span><input name="heading" maxlength="150" value="${esc(l.title)}" required></label>
+                <label class="field"><span>Link</span><input name="link" value="${esc(l.url)}" required></label>
+                <label class="field"><span>Short description</span><input name="description" maxlength="500" value="${esc(l.description)}"></label>
+                <div class="modal-actions"><button type="button" class="btn" data-close>Cancel</button><button class="btn btn-primary">Save</button></div>
+              </form>`,
+              {
+                onMount: (dlg, close) => {
+                  const f = dlg.querySelector('form');
+                  f.onsubmit = async (e) => {
+                    e.preventDefault();
+                    const err = f.querySelector('.msg');
+                    const d = { title: f.heading.value.trim(), url: f.link.value.trim(), description: f.description.value.trim() };
+                    try {
+                      await saveLink(d, (list) => list.map((x, i) => (i === idx ? d : x)));
+                      toast('Saved');
+                      close();
+                    } catch (ex) {
+                      err.textContent = ex.message;
+                      err.hidden = false;
+                    }
+                  };
+                },
+              },
+            );
+          }),
+      );
+    }
+
+    async function saveLink(d, change) {
+      await save({ ...articles, links: change(articles.links) });
+    }
+
+    draw();
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const d = { title: form.heading.value.trim(), url: form.link.value.trim(), description: form.description.value.trim() };
+      const btn = form.querySelector('button[type=submit]');
+      btn.disabled = true;
+      try {
+        await saveLink(d, (list) => [...list, d]);
+        toast('Link added');
+        form.reset();
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+    main.querySelector('#a-save').onclick = attempt(() =>
+      save({ ...articles, title: main.querySelector('#a-title').value, intro: main.querySelector('#a-intro').value }, 'Page text saved'),
+    );
   }
 
   /* ------------------------------ Photo manager ------------------------------ */

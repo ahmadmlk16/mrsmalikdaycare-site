@@ -17,6 +17,8 @@ import { db, getSite, saveSite } from './db.js';
 import { sendInquiryEmail } from './email.js';
 import { cleanProfile, parseProfile } from './profile.js';
 import { getGoogleRating } from './google.js';
+import { getClosures, saveClosures, suggestions } from './closures.js';
+import { cleanUrl, getArticles, saveArticles } from './articles.js';
 import { THEMES, BASE_THEMES, HOLIDAY_THEMES, activeTheme } from './themes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, randomId, readJson, sha256, str } from './util.js';
 
@@ -277,6 +279,39 @@ route('PUT', '/api/admin/content', async ({ request, env }) => {
   const body = await readJson(request);
   const site = await saveSite(env, body.site);
   return json({ site, themes: themeInfo(site) });
+});
+
+/* ------------------------------ Admin: closed days --------------------------- */
+
+route('GET', '/api/admin/closures', async ({ request, env }) => {
+  await requireUser(request, env, 'admin');
+  const closures = await getClosures(env);
+  return json({ closures, suggestions: suggestions(closures.days) });
+});
+
+route('PUT', '/api/admin/closures', async ({ request, env }) => {
+  await requireUser(request, env, 'admin');
+  const body = await readJson(request);
+  const closures = await saveClosures(env, body.closures);
+  return json({ closures, suggestions: suggestions(closures.days) });
+});
+
+/* ------------------------------ Admin: articles ----------------------------- */
+
+route('GET', '/api/admin/articles', async ({ request, env }) => {
+  await requireUser(request, env, 'admin');
+  return json({ articles: await getArticles(env) });
+});
+
+route('PUT', '/api/admin/articles', async ({ request, env }) => {
+  await requireUser(request, env, 'admin');
+  const body = await readJson(request);
+  for (const l of body.articles?.links || []) {
+    if (!String(l?.title || '').trim()) fail(400, 'Every link needs a title.');
+    if (!cleanUrl(l?.url))
+      fail(400, `"${String(l.url || '').slice(0, 80)}" doesn't look like a link. Use a full web address (https://…) or a page on this site starting with "/".`);
+  }
+  return json({ articles: await saveArticles(env, body.articles) });
 });
 
 /* ------------------------------- Admin: photos ----------------------------- */

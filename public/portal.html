@@ -7,13 +7,14 @@
 <title>Family photos | Mrs. Malik's Daycare</title>
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/app.css?v=20260928c">
 </head>
 <body>
 <header class="topbar">
   <div class="topbar-inner">
     <a class="brand" href="/"><img src="/assets/favicon.svg" alt="" width="32" height="32"> Mrs. Malik's Daycare</a>
     <div class="who">
+      <a class="btn btn-sm" href="/holidays">Closed days</a>
       <button class="btn btn-sm" id="info-btn">My family info</button>
       <button class="btn btn-sm" id="pw-btn">Change password</button>
       <button class="btn btn-sm" id="logout">Log out</button>
@@ -36,7 +37,7 @@
   <div class="portal-grid" id="grid"></div>
 </main>
 
-<script src="/assets/app.js"></script>
+<script src="/assets/app.js?v=20260928c"></script>
 <script>
 (async () => {
   const { api, esc, modal, lightbox, logout, toast, familyProfileFields, formBody } = App;
