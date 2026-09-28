@@ -217,10 +217,17 @@ p { margin: 0 0 1em; }
 .faq-answer { padding: 0 24px 8px; color: #4a433d; }
 
 /* Gallery */
-.gallery-grid { columns: 3 260px; column-gap: 16px; }
-.gallery-item { margin: 0 0 16px; break-inside: avoid; }
-.gallery-open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 16px; overflow: hidden; }
-.gallery-open img { width: 100%; height: auto; transition: transform 0.3s; }
+.gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.gallery-item { margin: 0; min-width: 0; }
+.gallery-grid:not(.expanded) .gallery-item.is-extra { display: none; }
+.gallery-open { display: block; width: 100%; padding: 0; border: 0; background: #f3ebe1; cursor: zoom-in; border-radius: 16px; overflow: hidden; aspect-ratio: 4 / 3; }
+.gallery-open img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s; }
+.gallery-more { text-align: center; margin-top: 28px; }
+@media (max-width: 560px) {
+  .gallery-grid { gap: 8px; }
+  .gallery-open { border-radius: 10px; aspect-ratio: 1; }
+  .gallery-item figcaption { display: none; }
+}
 .gallery-open:hover img { transform: scale(1.03); }
 .gallery-item figcaption { font-size: 0.92rem; color: var(--muted); padding: 6px 4px 0; }
 
