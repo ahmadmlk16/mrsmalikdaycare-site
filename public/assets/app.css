@@ -211,3 +211,24 @@ img { max-width: 100%; display: block; }
 .chip:disabled { opacity: 0.5; cursor: default; }
 .closure-row .closure-when a { overflow-wrap: anywhere; }
 .closure-row { grid-template-columns: minmax(0, 1fr) auto; }
+
+/* Documents */
+.doc-badge {
+  flex: 0 0 42px; height: 48px; border-radius: 6px 12px 6px 6px; display: grid; place-items: center;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.05em; color: #fff; background: #8a8178;
+}
+.doc-badge.doc-pdf { background: #d0463b; }
+.doc-badge.doc-doc { background: #2f6fbf; }
+.doc-badge.doc-xls { background: #2f8a4c; }
+.doc-badge.doc-img { background: #8a5cc7; }
+.doc-badge.doc-ppt { background: #d0782b; }
+.doc-admin-list { margin-top: 16px; }
+.doc-admin-row .closure-when { min-width: 0; overflow-wrap: anywhere; }
+.portal-docs { margin-bottom: 28px; }
+.portal-docs h2 { margin: 0 0 4px; }
+.portal-doc-group { margin: 18px 0 8px; font-size: 1rem; color: var(--orange-dark); }
+.portal-section-title { margin: 8px 0 12px; }
+@media (max-width: 640px) {
+  .doc-admin-row, .portal-doc-row { grid-template-columns: 1fr; }
+  .doc-admin-row .actions, .portal-doc-row .actions { justify-content: flex-start; }
+}

@@ -19,6 +19,7 @@ import { cleanProfile, parseProfile } from './profile.js';
 import { getGoogleRating } from './google.js';
 import { getClosures, saveClosures, suggestions } from './closures.js';
 import { cleanUrl, getArticles, saveArticles } from './articles.js';
+import { DOC_TYPES, FAMILY_CATEGORIES, MAX_DOC, docOut, extOf, safeFilename } from './documents.js';
 import { THEMES, BASE_THEMES, HOLIDAY_THEMES, activeTheme } from './themes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, randomId, readJson, sha256, str } from './util.js';
 
@@ -314,6 +315,110 @@ route('PUT', '/api/admin/articles', async ({ request, env }) => {
   return json({ articles: await saveArticles(env, body.articles) });
 });
 
+/* ------------------------------ Admin: documents ---------------------------- */
+
+route('GET', '/api/admin/documents', async ({ request, env, url }) => {
+  await requireUser(request, env, 'admin');
+  const d = await db(env);
+  const stmt =
+    url.searchParams.get('scope') === 'family'
+      ? d
+          .prepare(`SELECT * FROM documents WHERE scope = 'family' AND family_id = ?1 ORDER BY sort, created_at DESC`)
+          .bind(Number(url.searchParams.get('familyId')))
+      : d.prepare(`SELECT * FROM documents WHERE scope = 'public' ORDER BY sort, created_at DESC`);
+  const { results } = await stmt.all();
+  return json({ documents: results.map(docOut), categories: FAMILY_CATEGORIES });
+});
+
+route('POST', '/api/admin/documents', async ({ request, env, url }) => {
+  await requireUser(request, env, 'admin');
+  if (!env.PHOTOS) fail(500, 'File storage is not connected yet (missing PHOTOS binding).');
+  const scope = url.searchParams.get('scope');
+  if (!['public', 'family'].includes(scope)) fail(400, 'Unknown document type.');
+  // A non-form content type means browsers must ask first (CORS), so other sites can't upload.
+  if ((request.headers.get('content-type') || '').split(';')[0].trim() !== 'application/octet-stream') fail(415, 'Unexpected upload format.');
+  const filename = safeFilename(url.searchParams.get('filename'));
+  const ext = extOf(filename);
+  const contentType = DOC_TYPES[ext];
+  if (!contentType) fail(415, 'Please upload a PDF, Word, Excel, or image file.');
+  if (Number(request.headers.get('content-length') || 0) > MAX_DOC) fail(413, 'That file is too large (25 MB max).');
+
+  const d = await db(env);
+  let familyId = null;
+  if (scope === 'family') {
+    familyId = Number(url.searchParams.get('familyId'));
+    const fam = await d.prepare(`SELECT id FROM users WHERE id = ?1 AND role = 'family'`).bind(familyId).first();
+    if (!fam) fail(404, 'Family not found.');
+  }
+  const data = await request.arrayBuffer();
+  if (data.byteLength === 0) fail(400, 'The file was empty.');
+  if (data.byteLength > MAX_DOC) fail(413, 'That file is too large (25 MB max).');
+
+  const id = randomId(12);
+  const r2Key = scope === 'family' ? `docs/family/${familyId}/${id}.${ext}` : `docs/public/${id}.${ext}`;
+  await env.PHOTOS.put(r2Key, data, { httpMetadata: { contentType } });
+  const title = str(url.searchParams.get('title'), 150) || filename.replace(/\.[^.]*$/, '');
+  const category = str(url.searchParams.get('category'), 60);
+  const minSort = await d
+    .prepare(`SELECT COALESCE(MIN(sort), 0) AS s FROM documents WHERE scope = ?1 AND COALESCE(family_id, 0) = ?2`)
+    .bind(scope, familyId || 0)
+    .first();
+  await d
+    .prepare(
+      `INSERT INTO documents (id, r2_key, scope, family_id, title, description, category, filename, content_type, size, sort, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`,
+    )
+    .bind(id, r2Key, scope, familyId, title, str(url.searchParams.get('description'), 500), category, filename, contentType, data.byteLength, minSort.s - 1, now())
+    .run();
+  const row = await d.prepare(`SELECT * FROM documents WHERE id = ?1`).bind(id).first();
+  return json({ document: docOut(row) });
+});
+
+route('PATCH', '/api/admin/documents/:id', async ({ request, env, params }) => {
+  await requireUser(request, env, 'admin');
+  const body = await readJson(request);
+  const d = await db(env);
+  const doc = await d.prepare(`SELECT * FROM documents WHERE id = ?1`).bind(params.id).first();
+  if (!doc) fail(404, 'Document not found.');
+  const title = body.title !== undefined ? str(body.title, 150) : doc.title;
+  if (!title) fail(400, 'Please give the document a title.');
+  await d
+    .prepare(`UPDATE documents SET title = ?1, description = ?2, category = ?3 WHERE id = ?4`)
+    .bind(
+      title,
+      body.description !== undefined ? str(body.description, 500) : doc.description,
+      body.category !== undefined ? str(body.category, 60) : doc.category,
+      doc.id,
+    )
+    .run();
+  return json({ document: docOut(await d.prepare(`SELECT * FROM documents WHERE id = ?1`).bind(doc.id).first()) });
+});
+
+route('DELETE', '/api/admin/documents/:id', async ({ request, env, params }) => {
+  await requireUser(request, env, 'admin');
+  const d = await db(env);
+  const doc = await d.prepare(`SELECT * FROM documents WHERE id = ?1`).bind(params.id).first();
+  if (!doc) fail(404, 'Document not found.');
+  await deleteDocuments(env, [doc]);
+  return json({ ok: true });
+});
+
+route('POST', '/api/admin/documents/reorder', async ({ request, env }) => {
+  await requireUser(request, env, 'admin');
+  const body = await readJson(request);
+  const ids = Array.isArray(body.ids) ? body.ids.slice(0, 500).map((x) => String(x)) : [];
+  const d = await db(env);
+  if (ids.length) await d.batch(ids.map((id, i) => d.prepare(`UPDATE documents SET sort = ?1 WHERE id = ?2`).bind(i, id)));
+  return json({ ok: true });
+});
+
+async function deleteDocuments(env, docs) {
+  if (!docs.length) return;
+  const d = await db(env);
+  if (env.PHOTOS) await env.PHOTOS.delete(docs.map((x) => x.r2_key));
+  await d.batch(docs.map((x) => d.prepare(`DELETE FROM documents WHERE id = ?1`).bind(x.id)));
+}
+
 /* ------------------------------- Admin: photos ----------------------------- */
 
 function photoOut(p) {
@@ -459,7 +564,8 @@ route('GET', '/api/admin/families', async ({ request, env }) => {
   const { results } = await d
     .prepare(
       `SELECT u.id, u.email, u.name, u.children, u.profile, u.active, u.must_change_password, u.created_at, u.last_login_at,
-              (SELECT COUNT(*) FROM photos p WHERE p.family_id = u.id) AS photo_count
+              (SELECT COUNT(*) FROM photos p WHERE p.family_id = u.id) AS photo_count,
+              (SELECT COUNT(*) FROM documents x WHERE x.family_id = u.id) AS doc_count
        FROM users u WHERE u.role = 'family' ORDER BY u.name COLLATE NOCASE`,
     )
     .all();
@@ -475,6 +581,7 @@ route('GET', '/api/admin/families', async ({ request, env }) => {
       createdAt: f.created_at,
       lastLoginAt: f.last_login_at,
       photoCount: f.photo_count,
+      docCount: f.doc_count,
     })),
   });
 });
@@ -564,6 +671,8 @@ route('DELETE', '/api/admin/families/:id', async ({ request, env, params }) => {
   const d = await db(env);
   const { results } = await d.prepare(`SELECT * FROM photos WHERE family_id = ?1`).bind(fam.id).all();
   await deletePhotos(env, results);
+  const docs = await d.prepare(`SELECT * FROM documents WHERE family_id = ?1`).bind(fam.id).all();
+  await deleteDocuments(env, docs.results);
   await d.batch([
     d.prepare(`DELETE FROM sessions WHERE user_id = ?1`).bind(fam.id),
     d.prepare(`DELETE FROM users WHERE id = ?1`).bind(fam.id),
@@ -628,6 +737,16 @@ route('DELETE', '/api/admin/inquiries/:id', async ({ request, env, params }) => 
 });
 
 /* ------------------------------- Family portal ----------------------------- */
+
+route('GET', '/api/family/documents', async ({ request, env }) => {
+  const user = await requireUser(request, env, 'family');
+  const d = await db(env);
+  const { results } = await d
+    .prepare(`SELECT * FROM documents WHERE scope = 'family' AND family_id = ?1 ORDER BY sort, created_at DESC`)
+    .bind(user.id)
+    .all();
+  return json({ documents: results.map(docOut) });
+});
 
 route('GET', '/api/family/photos', async ({ request, env }) => {
   const user = await requireUser(request, env, 'family');
