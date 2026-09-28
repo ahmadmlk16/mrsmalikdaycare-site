@@ -164,7 +164,13 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
   <section class="hero" aria-labelledby="hero-title">
     <div class="container hero-inner">
       <div class="hero-copy">
-        ${site.enrollmentStatus ? `<span class="pill"><span class="dot"></span>${esc(site.enrollmentStatus)}</span>` : ''}
+        ${
+          site.badges.length
+            ? `<div class="pills">${site.badges
+                .map((b) => `<span class="pill pill-${esc(b.color)}"><span class="dot"></span>${esc(b.text)}</span>`)
+                .join('')}</div>`
+            : ''
+        }
         <h1 id="hero-title">${esc(site.heroTitle)}</h1>
         <p class="lead">${esc(site.heroSubtitle)}</p>
         <div class="hero-actions">
