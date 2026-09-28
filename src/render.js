@@ -66,7 +66,17 @@ export function renderHome(site, gallery, { loggedIn = null } = {}) {
     ? `<img src="/media/${esc(site.coverPhotoId)}" alt="${esc(site.name)}" fetchpriority="high">`
     : COVER_ILLUSTRATION;
 
-  const reviewsOn = !!(site.showReviews && site.googlePlaceId);
+  const reviewsOn = !!(site.showReviews && (site.featuredReviews.length || site.googleRating));
+  const googleUrl = site.googlePlaceId
+    ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(site.googlePlaceId)}`
+    : '';
+  const writeReviewUrl = site.googlePlaceId
+    ? `https://search.google.com/local/writereview?placeid=${encodeURIComponent(site.googlePlaceId)}`
+    : '';
+  const stars = (n) => {
+    const full = Math.round(Number(n) || 0);
+    return `<span class="stars" role="img" aria-label="${full} out of 5 stars">${'★'.repeat(full)}<span class="off">${'★'.repeat(5 - full)}</span></span>`;
+  };
   const mapQuery = site.address ? `${site.name}, ${site.address}` : '';
   const directionsUrl = site.address
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(site.address)}${
@@ -280,16 +290,44 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
 
 ${
     reviewsOn
-      ? `<section id="reviews" class="section" aria-labelledby="reviews-title" hidden>
+      ? `<section id="reviews" class="section" aria-labelledby="reviews-title">
     <div class="container">
       <div class="section-head">
         <p class="eyebrow">What parents say</p>
         <h2 id="reviews-title">Reviews</h2>
-        <div class="rating-summary"></div>
+        ${
+          site.googleRating
+            ? `<div class="rating-summary"><span class="big">${esc(site.googleRating)}</span> ${stars(site.googleRating)}${
+                site.googleReviewCount ? ` <span class="muted">${esc(site.googleReviewCount)} Google reviews</span>` : ''
+              }</div>`
+            : ''
+        }
       </div>
-      <div class="reviews-grid"></div>
-      <div class="reviews-actions"></div>
-      <p class="google-attrib">Reviews from Google</p>
+      <div class="reviews-grid">
+        ${site.featuredReviews
+          .map(
+            (r) => `<article class="review">
+          <header>
+            <span class="avatar" aria-hidden="true">${esc((r.author || '?').trim().charAt(0))}</span>
+            <div>
+              <b>${esc(r.author || 'Parent')}</b>
+              <div>${stars(r.rating)} ${r.when ? `<span class="muted">${esc(r.when)}</span>` : ''}</div>
+            </div>
+          </header>
+          <p class="review-text">${esc(r.text)}</p>
+          <button type="button" class="read-more" hidden>Read more</button>
+        </article>`,
+          )
+          .join('')}
+      </div>
+      ${
+        googleUrl
+          ? `<div class="reviews-actions">
+        <a class="btn btn-secondary" href="${esc(googleUrl)}" target="_blank" rel="noopener">See all reviews on Google</a>
+        <a class="btn btn-primary" href="${esc(writeReviewUrl)}" target="_blank" rel="noopener">Write a review</a>
+      </div>`
+          : ''
+      }
     </div>
   </section>
 

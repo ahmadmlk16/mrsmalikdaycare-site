@@ -2,6 +2,7 @@
 import { currentUser } from '../src/auth.js';
 import { db, getSite } from '../src/db.js';
 import { renderHome } from '../src/render.js';
+import { getGoogleRating } from '../src/google.js';
 
 export async function onRequestGet({ request, env }) {
   let site;
@@ -9,6 +10,12 @@ export async function onRequestGet({ request, env }) {
   let user = null;
   try {
     site = await getSite(env);
+    // Live Google rating/count (cached 30 days); falls back to the admin's numbers.
+    const live = await getGoogleRating(env, site.googlePlaceId).catch(() => null);
+    if (live) {
+      site.googleRating = live.rating;
+      site.googleReviewCount = live.count;
+    }
     if (env.DB) {
       const d = await db(env);
       const { results } = await d

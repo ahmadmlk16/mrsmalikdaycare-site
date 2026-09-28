@@ -50,29 +50,16 @@ const PHOTOS = {
 
 const env = { DB, PHOTOS, SETUP_KEY: process.env.SETUP_KEY || 'dev-setup-key' };
 if (process.env.RESEND_API_KEY) env.RESEND_API_KEY = process.env.RESEND_API_KEY;
-if (process.env.GOOGLE_PLACES_API_KEY) env.GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
-// MOCK_GOOGLE=1 fakes the Google Places API so reviews can be tested offline.
+if (process.env.GOOGLE_PLACES_API_KEY) env.GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+// MOCK_GOOGLE=1 fakes the Google rating lookup for local testing.
 if (process.env.MOCK_GOOGLE) {
   env.GOOGLE_PLACES_API_KEY = 'mock';
   const realFetch = globalThis.fetch;
-  globalThis.fetch = async (url, opts) => {
-    if (String(url).startsWith('https://places.googleapis.com/v1/places:searchText')) {
-      return Response.json({ places: [{ id: 'ChIJmockPlace123', displayName: { text: "Mrs. Malik's Daycare" }, formattedAddress: '123 Example St, Alexandria, VA 22304, USA', rating: 4.9, userRatingCount: 27 }] });
-    }
-    if (String(url).startsWith('https://places.googleapis.com/v1/places/')) {
-      const long = 'Our daughter has been going here for two years and absolutely loves it. '.repeat(6);
-      return Response.json({
-        displayName: { text: "Mrs. Malik's Daycare" }, rating: 4.9, userRatingCount: 27, googleMapsUri: 'https://maps.google.com/?cid=1',
-        reviews: [
-          { rating: 5, text: { text: 'Wonderful, caring environment. <script>alert(1)</script>' }, relativePublishTimeDescription: '2 months ago', authorAttribution: { displayName: 'Sample Parent A', uri: 'https://www.google.com/maps/contrib/1', photoUri: '' } },
-          { rating: 5, text: { text: long }, relativePublishTimeDescription: 'a year ago', authorAttribution: { displayName: 'Sample Parent B', uri: 'javascript:alert(1)' } },
-          { rating: 4, text: { text: 'Great meals and very clean home.' }, relativePublishTimeDescription: '3 weeks ago', authorAttribution: { displayName: 'Sample Parent C' } },
-        ],
-      });
-    }
-    return realFetch(url, opts);
-  };
+  globalThis.fetch = async (url, opts) =>
+    String(url).startsWith('https://places.googleapis.com/')
+      ? Response.json({ rating: 4.9, userRatingCount: 21 })
+      : realFetch(url, opts);
 }
 
 /* ----------------------------- Routing ----------------------------- */
