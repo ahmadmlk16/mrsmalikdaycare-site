@@ -14,3 +14,6 @@
 
 /login*
   X-Robots-Tag: noindex
+
+/assets/*
+  Cache-Control: public, max-age=0, must-revalidate

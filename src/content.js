@@ -11,6 +11,7 @@ export const DEFAULT_SITE = {
   holidayThemes: true,
   holidays: HOLIDAY_THEMES,
   holidayBanner: true,
+  holidayEffects: true,
   heroTitle: 'A warm, loving home away from home',
   heroSubtitle:
     'Licensed family home daycare in Alexandria, VA. Small groups, home-cooked meals, and caring attention for every child.',
@@ -87,6 +88,7 @@ export function cleanSite(input) {
     holidayThemes: s.holidayThemes !== false,
     holidays: Array.isArray(s.holidays) ? HOLIDAY_THEMES.filter((k) => s.holidays.includes(k)) : HOLIDAY_THEMES,
     holidayBanner: s.holidayBanner !== false,
+    holidayEffects: s.holidayEffects !== false,
     // Older saves only had one "enrollmentStatus" badge; turn it into the list.
     badges: list(
       input && input.badges === undefined

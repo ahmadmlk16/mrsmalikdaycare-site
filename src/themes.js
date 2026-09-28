@@ -51,7 +51,6 @@ export const THEMES = {
       cream: '#f7fbf8', peach: '#f9dcdc', sky: '#e7f2ec', line: '#e3ece6',
       orange: '#c0392b', 'orange-dark': '#962d22', blue: '#1f6b43', sun: '#f4c542', ground: '#ffffff',
     },
-    snow: true,
   },
   newyear: {
     label: 'New Year',
@@ -61,7 +60,6 @@ export const THEMES = {
       cream: '#f7f7fb', peach: '#f3e6c4', sky: '#e6e9f5', line: '#e2e4ef',
       orange: '#c9961a', 'orange-dark': '#9a7110', blue: '#23305e', sun: '#f4c542', ground: '#dfe3f3',
     },
-    snow: true,
   },
   valentines: {
     label: "Valentine's Day",
@@ -133,8 +131,8 @@ export const HOLIDAY_THEMES = Object.keys(THEMES).filter((k) => THEMES[k].holida
 
 // Eid dates follow the lunar calendar and can shift by a day depending on the
 // moon sighting; these are the commonly expected dates in the US.
-const EID_FITR = ['2026-03-20', '2027-03-10', '2028-02-27', '2029-02-14', '2030-02-05', '2031-01-25', '2032-01-14'];
-const EID_ADHA = ['2026-05-27', '2027-05-16', '2028-05-05', '2029-04-24', '2030-04-13', '2031-04-03', '2032-03-22'];
+export const EID_FITR = ['2026-03-20', '2027-03-10', '2028-02-27', '2029-02-14', '2030-02-05', '2031-01-25', '2032-01-14'];
+export const EID_ADHA = ['2026-05-27', '2027-05-16', '2028-05-05', '2029-04-24', '2030-04-13', '2031-04-03', '2032-03-22'];
 
 const utc = (y, m, d) => Date.UTC(y, m - 1, d);
 
@@ -147,7 +145,7 @@ function easter(y) {
   return utc(y, month, day);
 }
 
-function thanksgiving(y) {
+export function thanksgiving(y) {
   const nov1 = new Date(utc(y, 11, 1)).getUTCDay(); // 0 = Sunday
   const firstThu = 1 + ((4 - nov1 + 7) % 7);
   return utc(y, 11, firstThu + 21);
