@@ -1,35 +1,14 @@
-// Google reviews via the Places API (New). Needs the GOOGLE_PLACES_API_KEY secret.
-// Results are saved in the database and refreshed at most once every 30 days
-// (or when the admin clicks "Refresh reviews now"), so Google is called only a
-// handful of times a year.
+// Live Google star rating and review count via the Places API (New).
+// Needs the GOOGLE_PLACES_API_KEY secret. Only the rating and count are
+// requested (no review text or photos). The result is saved in the database
+// and refreshed at most once every 30 days, or when the admin clicks
+// "Refresh from Google". If the key is missing or Google can't be reached,
+// the site falls back to the numbers typed into the admin dashboard.
 import { db } from './db.js';
 
-const PLACES = 'https://places.googleapis.com/v1';
 const CACHE_DAYS = 30;
-const CACHE_KEY = 'google_reviews';
-
-export function writeReviewUrl(placeId) {
-  return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(placeId)}`;
-}
-
-function shape(place, placeId) {
-  return {
-    name: place.displayName?.text || '',
-    rating: place.rating || null,
-    count: place.userRatingCount || 0,
-    mapsUrl: place.googleMapsUri || `https://www.google.com/maps/place/?q=place_id:${placeId}`,
-    writeReviewUrl: writeReviewUrl(placeId),
-    reviews: (place.reviews || []).map((r) => ({
-      rating: r.rating || 0,
-      text: r.text?.text || r.originalText?.text || '',
-      when: r.relativePublishTimeDescription || '',
-      author: r.authorAttribution?.displayName || 'Google user',
-      authorUrl: r.authorAttribution?.uri || '',
-      authorPhoto: r.authorAttribution?.photoUri || '',
-      googleUrl: r.googleMapsUri || '',
-    })),
-  };
-}
+const RETRY_HOURS = 3;
+const CACHE_KEY = 'google_rating';
 
 async function readCache(env) {
   const d = await db(env);
@@ -52,54 +31,43 @@ async function writeCache(env, entry) {
     .run();
 }
 
-export async function getReviews(env, placeId, { refresh = false } = {}) {
-  if (!env.GOOGLE_PLACES_API_KEY) return { error: 'not_configured' };
-  if (!placeId) return { error: 'no_place_id' };
+// Returns { rating, count, fetchedAt } or null when unavailable.
+export async function getGoogleRating(env, placeId, { refresh = false } = {}) {
+  if (!env.GOOGLE_PLACES_API_KEY || !placeId || !env.DB) return null;
 
   const cached = await readCache(env);
-  const sameplace = cached && cached.placeId === placeId;
-  const fresh = sameplace && Date.now() - cached.fetchedAt < CACHE_DAYS * 86400 * 1000;
-  if (fresh && !refresh) return { ...cached.data, fetchedAt: cached.fetchedAt };
-
-  const res = await fetch(`${PLACES}/places/${encodeURIComponent(placeId)}`, {
-    headers: {
-      'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': 'displayName,rating,userRatingCount,reviews,googleMapsUri',
-    },
-  });
-  if (!res.ok) {
-    console.warn('Google Places error', res.status, (await res.text()).slice(0, 300));
-    // Keep showing the last good copy if Google is having a problem.
-    if (sameplace) return { ...cached.data, fetchedAt: cached.fetchedAt };
-    return { error: 'google_error', status: res.status };
+  const same = cached && cached.placeId === placeId;
+  const maxAge = same && cached.ok ? CACHE_DAYS * 86400e3 : RETRY_HOURS * 3600e3;
+  if (same && !refresh && Date.now() - cached.fetchedAt < maxAge) {
+    return cached.ok ? cached.data : null;
   }
-  const data = shape(await res.json(), placeId);
-  const fetchedAt = Date.now();
-  await writeCache(env, { placeId, fetchedAt, data });
-  return { ...data, fetchedAt };
-}
 
-// Used by the admin "Find on Google" button to look up the Place ID.
-export async function searchPlaces(env, query) {
-  if (!env.GOOGLE_PLACES_API_KEY) return { error: 'not_configured' };
-  const res = await fetch(`${PLACES}/places:searchText`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount',
-    },
-    body: JSON.stringify({ textQuery: query, maxResultCount: 5 }),
-  });
-  if (!res.ok) return { error: 'google_error', status: res.status, detail: (await res.text()).slice(0, 300) };
-  const data = await res.json();
-  return {
-    places: (data.places || []).map((p) => ({
-      id: p.id,
-      name: p.displayName?.text || '',
-      address: p.formattedAddress || '',
-      rating: p.rating || null,
-      count: p.userRatingCount || 0,
-    })),
-  };
+  let data = null;
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
+      headers: { 'X-Goog-Api-Key': env.GOOGLE_PLACES_API_KEY, 'X-Goog-FieldMask': 'rating,userRatingCount' },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (res.ok) {
+      const j = await res.json();
+      if (j.rating) data = { rating: Number(j.rating).toFixed(1), count: String(j.userRatingCount || 0) };
+    } else {
+      console.warn('Google rating error', res.status, (await res.text()).slice(0, 200));
+    }
+  } catch (err) {
+    console.warn('Google rating fetch failed', String(err));
+  }
+
+  const fetchedAt = Date.now();
+  if (data) {
+    await writeCache(env, { placeId, ok: true, fetchedAt, data: { ...data, fetchedAt } });
+    return { ...data, fetchedAt };
+  }
+  // Keep the last good numbers if Google has a hiccup; try again in a few hours.
+  if (same && cached.ok) {
+    await writeCache(env, { ...cached, fetchedAt: fetchedAt - (CACHE_DAYS * 86400e3 - RETRY_HOURS * 3600e3) });
+    return cached.data;
+  }
+  await writeCache(env, { placeId, ok: false, fetchedAt });
+  return null;
 }

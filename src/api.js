@@ -16,7 +16,7 @@ import {
 import { db, getSite, saveSite } from './db.js';
 import { sendInquiryEmail } from './email.js';
 import { cleanProfile, parseProfile } from './profile.js';
-import { getReviews, searchPlaces } from './google.js';
+import { getGoogleRating } from './google.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, randomId, readJson, sha256, str } from './util.js';
 
 const MAX_UPLOAD = 10 * 1024 * 1024;
@@ -245,44 +245,16 @@ route('POST', '/api/inquiry', async ({ request, env }) => {
   return json({ ok: true });
 });
 
-/* ------------------------------ Google reviews ----------------------------- */
-
-route('GET', '/api/reviews', async ({ env }) => {
-  const site = await getSite(env);
-  if (!site.showReviews || !site.googlePlaceId) return json({ enabled: false });
-  const data = await getReviews(env, site.googlePlaceId);
-  if (data.error) return json({ enabled: false, error: data.error });
-  const { fetchedAt, ...pub } = data;
-  return json({ enabled: true, ...pub }, 200, { 'cache-control': 'public, max-age=900' });
-});
-
-route('POST', '/api/admin/google/search', async ({ request, env }) => {
-  await requireUser(request, env, 'admin');
-  const body = await readJson(request);
-  const query = str(body.query, 200);
-  if (!query) fail(400, 'Type the daycare name and city to search.');
-  const out = await searchPlaces(env, query);
-  if (out.error === 'not_configured') fail(400, 'The Google API key is not set up in Cloudflare yet (GOOGLE_PLACES_API_KEY).');
-  if (out.error) fail(502, `Google returned an error (${out.status}). Check that "Places API (New)" is enabled for the key.`);
-  return json(out);
-});
+/* ------------------------------ Google rating ------------------------------ */
 
 route('GET', '/api/admin/google/status', async ({ request, env, url }) => {
   await requireUser(request, env, 'admin');
   const site = await getSite(env);
   const configured = !!env.GOOGLE_PLACES_API_KEY;
-  if (!configured || !site.googlePlaceId) return json({ configured, placeId: site.googlePlaceId });
-  const data = await getReviews(env, site.googlePlaceId, { refresh: url.searchParams.has('refresh') });
-  return json({
-    configured,
-    placeId: site.googlePlaceId,
-    ok: !data.error,
-    error: data.error,
-    rating: data.rating,
-    count: data.count,
-    name: data.name,
-    fetchedAt: data.fetchedAt,
-  });
+  const live = configured
+    ? await getGoogleRating(env, site.googlePlaceId, { refresh: url.searchParams.has('refresh') })
+    : null;
+  return json({ configured, placeId: site.googlePlaceId, live });
 });
 
 /* ------------------------------- Admin: content ---------------------------- */

@@ -98,60 +98,18 @@
     });
   }
 
-  // Google reviews (loaded after the page so it stays fast)
-  const reviewsSection = document.getElementById('reviews');
-  if (reviewsSection) {
-    const esc = (v) =>
-      String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-    const stars = (n) => {
-      const full = Math.round(n);
-      return `<span class="stars" role="img" aria-label="${n} out of 5 stars">${'★'.repeat(full)}<span class="off">${'★'.repeat(5 - full)}</span></span>`;
-    };
-    const safeUrl = (u) => (/^https:\/\//.test(u || '') ? u : '');
-    fetch('/api/reviews')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d.enabled) {
-          document.querySelector('[data-nav="reviews"]')?.remove();
-          return;
-        }
-        reviewsSection.querySelector('.rating-summary').innerHTML = d.rating
-          ? `<span class="big">${d.rating.toFixed(1)}</span> ${stars(d.rating)} <span class="muted">${d.count} Google review${d.count === 1 ? '' : 's'}</span>`
-          : '';
-        reviewsSection.querySelector('.reviews-grid').innerHTML = d.reviews
-          .filter((r) => r.text)
-          .map(
-            (r) => `<article class="review">
-              <header>
-                ${safeUrl(r.authorPhoto) ? `<img src="${esc(r.authorPhoto)}" alt="" width="40" height="40" referrerpolicy="no-referrer" loading="lazy">` : `<span class="avatar">${esc(r.author[0] || '?')}</span>`}
-                <div>
-                  ${safeUrl(r.authorUrl) ? `<a href="${esc(r.authorUrl)}" target="_blank" rel="noopener">${esc(r.author)}</a>` : `<b>${esc(r.author)}</b>`}
-                  <div>${stars(r.rating)} <span class="muted">${esc(r.when)}</span></div>
-                </div>
-              </header>
-              <p class="review-text">${esc(r.text)}</p>
-              <button type="button" class="read-more" hidden>Read more</button>
-            </article>`,
-          )
-          .join('');
-        reviewsSection.querySelector('.reviews-actions').innerHTML = `
-          <a class="btn btn-secondary" href="${esc(safeUrl(d.mapsUrl))}" target="_blank" rel="noopener">See all reviews on Google</a>
-          <a class="btn btn-primary" href="${esc(safeUrl(d.writeReviewUrl))}" target="_blank" rel="noopener">Write a review</a>`;
-        reviewsSection.hidden = false;
-        reviewsSection.querySelectorAll('.review').forEach((card) => {
-          const text = card.querySelector('.review-text');
-          const more = card.querySelector('.read-more');
-          if (text.scrollHeight > text.clientHeight + 2) {
-            more.hidden = false;
-            more.onclick = () => {
-              const open = text.classList.toggle('open');
-              more.textContent = open ? 'Show less' : 'Read more';
-            };
-          }
-        });
-      })
-      .catch(() => document.querySelector('[data-nav="reviews"]')?.remove());
-  }
+  // Reviews: show "Read more" only on long reviews
+  document.querySelectorAll('.review').forEach((card) => {
+    const text = card.querySelector('.review-text');
+    const more = card.querySelector('.read-more');
+    if (text && more && text.scrollHeight > text.clientHeight + 2) {
+      more.hidden = false;
+      more.onclick = () => {
+        const open = text.classList.toggle('open');
+        more.textContent = open ? 'Show less' : 'Read more';
+      };
+    }
+  });
 
   // Gallery lightbox
   const lb = document.getElementById('lightbox');

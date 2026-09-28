@@ -270,17 +270,22 @@
       </section>
 
       <section class="card">
-        <div class="card-head"><div><h2>Location &amp; Google reviews</h2>
-          <p class="muted">The map and "Get directions" button appear under the contact form. Reviews come live from the daycare's Google Business Profile.</p></div></div>
-        <label class="field"><span>Full street address <small>(shown with a map; leave blank to hide the map)</small></span><input data-key="address" placeholder="Street, City, VA ZIP"></label>
-        <div class="field"><span>Google Business Profile</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-            <input data-key="googlePlaceId" placeholder="Place ID (use Find on Google)" style="flex:1;min-width:220px">
-            <button type="button" class="btn btn-sm" id="find-google">Find on Google</button>
-          </div>
-          <span class="muted small" id="google-status" style="font-weight:600"></span>
+        <div class="card-head"><div><h2>Location</h2>
+          <p class="muted">A map with a "Get directions" button appears under the contact form.</p></div></div>
+        <label class="field"><span>Full street address <small>(leave blank to hide the map)</small></span><input data-key="address" placeholder="Street, City, VA ZIP"></label>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Reviews</h2>
+          <p class="muted">Copy in favorite reviews from the daycare's Google page. Please keep them word-for-word from real parents.</p></div></div>
+        <label class="check" style="margin-bottom:14px"><input type="checkbox" data-key="showReviews"> Show the Reviews section on the homepage</label>
+        <label class="field"><span>Google Place ID <small>(links the Google listing: rating, "See all reviews", "Write a review")</small></span><input data-key="googlePlaceId"></label>
+        <p class="msg" id="google-status" style="background:#f3ebe1">Checking Google…</p>
+        <div class="grid-2">
+          <label class="field"><span>Backup star rating <small>(used only if Google can't be reached)</small></span><input data-key="googleRating" inputmode="decimal"></label>
+          <label class="field"><span>Backup review count</span><input data-key="googleReviewCount" inputmode="numeric"></label>
         </div>
-        <label class="check"><input type="checkbox" data-key="showReviews"> Show Google reviews on the homepage</label>
+        <div class="field"><span>Featured reviews <small>(up to 12)</small></span><div id="reviews-editor"></div></div>
       </section>
 
       <div class="savebar"><div class="savebar-inner">
@@ -305,78 +310,31 @@
       });
     });
 
-    // Google Business Profile status and search
+    // Live Google rating status
     const gStatus = main.querySelector('#google-status');
     const refreshGoogleStatus = async (force = false) => {
       try {
         const st = await api('/api/admin/google/status' + (force ? '?refresh=1' : ''));
-        if (!st.configured) gStatus.textContent = 'Google API key not set up in Cloudflare yet, so reviews are hidden.';
-        else if (!st.placeId) gStatus.textContent = 'Not connected. Use "Find on Google" to pick the daycare.';
-        else if (st.ok) {
-          gStatus.innerHTML = `Connected: ${esc(st.name || 'Google profile')} · ${st.rating ?? '–'}★ from ${st.count} reviews
-            <span class="muted">(updated ${new Date(st.fetchedAt).toLocaleDateString()}, refreshes every 30 days)</span>
-            <button type="button" class="btn btn-sm" id="refresh-reviews" style="margin-left:6px">Refresh reviews now</button>`;
-          gStatus.querySelector('#refresh-reviews').onclick = async (e) => {
+        if (!st.configured) {
+          gStatus.textContent = 'Live Google rating is off (no API key in Cloudflare). The backup numbers below are shown instead.';
+        } else if (!st.live) {
+          gStatus.textContent = "Couldn't get the rating from Google right now, so the backup numbers below are shown. It will retry in a few hours.";
+        } else {
+          gStatus.innerHTML = `Live from Google: <b>${esc(st.live.rating)}★ from ${esc(st.live.count)} reviews</b>
+            <span class="muted">(checked ${new Date(st.live.fetchedAt).toLocaleDateString()}, updates every 30 days)</span>
+            <button type="button" class="btn btn-sm" id="refresh-google" style="margin-left:6px">Refresh from Google</button>`;
+          gStatus.querySelector('#refresh-google').onclick = async (e) => {
             e.target.disabled = true;
             e.target.textContent = 'Refreshing…';
             await refreshGoogleStatus(true);
-            toast('Reviews refreshed from Google');
+            toast('Rating refreshed from Google');
           };
         }
-        else gStatus.textContent = 'Could not load reviews for this Place ID. Try "Find on Google" again.';
       } catch {
         gStatus.textContent = '';
       }
     };
     refreshGoogleStatus();
-    main.querySelector('#find-google').onclick = () =>
-      modal(
-        `<form><h2>Find the daycare on Google</h2>
-          <p class="muted">Search by name and city, then pick the right listing.</p>
-          <p class="msg err" hidden></p>
-          <div style="display:flex;gap:8px"><input class="inline-input" name="q" value="${esc(site.name + ' ' + (site.area || ''))}" style="flex:1">
-          <button class="btn btn-primary" type="submit">Search</button></div>
-          <div class="table-list" id="g-results" style="margin-top:14px"></div>
-          <div class="modal-actions" style="margin-top:14px"><button type="button" class="btn" data-close="">Close</button></div></form>`,
-        {
-          onMount: (m, close) => {
-            const form = m.querySelector('form');
-            const out = m.querySelector('#g-results');
-            const msg = m.querySelector('.msg');
-            form.onsubmit = async (e) => {
-              e.preventDefault();
-              msg.hidden = true;
-              out.innerHTML = '<p class="muted">Searching…</p>';
-              try {
-                const { places } = await api('/api/admin/google/search', { method: 'POST', body: { query: form.elements.q.value } });
-                out.innerHTML = places.length ? '' : '<p class="muted">No matches. Try a different name or add the city.</p>';
-                places.forEach((p) => {
-                  const row = document.createElement('div');
-                  row.className = 'row-card';
-                  row.innerHTML = `<div><h3>${esc(p.name)}</h3><div class="sub">${esc(p.address)}${p.rating ? ` · ${p.rating}★ (${p.count})` : ''}</div></div>
-                    <div class="actions"><button type="button" class="btn btn-sm btn-primary">Use this</button></div>`;
-                  row.querySelector('button').onclick = () => {
-                    site.googlePlaceId = p.id;
-                    main.querySelector('[data-key=googlePlaceId]').value = p.id;
-                    if (!site.address) {
-                      site.address = p.address;
-                      main.querySelector('[data-key=address]').value = p.address;
-                    }
-                    markDirty();
-                    gStatus.textContent = `Selected: ${p.name}. Click "Save changes" to connect it.`;
-                    close();
-                  };
-                  out.appendChild(row);
-                });
-              } catch (err) {
-                out.innerHTML = '';
-                msg.textContent = err.message;
-                msg.hidden = false;
-              }
-            };
-          },
-        },
-      );
 
     main.querySelectorAll('[data-photo]').forEach((box) => {
       const key = box.dataset.photo;
@@ -428,6 +386,13 @@
       { key: 'role', label: 'Role', placeholder: 'Owner & lead provider' },
       { key: 'bio', label: 'About them', type: 'textarea', placeholder: 'Experience, certifications, what they love about working with kids…' },
     ], { cols: '1fr', addLabel: 'Add provider', onChange: markDirty, max: 12 });
+
+    listEditor(main.querySelector('#reviews-editor'), site.featuredReviews, [
+      { key: 'author', label: 'Parent name', placeholder: 'As shown on Google' },
+      { key: 'rating', label: 'Stars (1-5)', placeholder: '5' },
+      { key: 'when', label: 'When', placeholder: 'e.g. 2 months ago' },
+      { key: 'text', label: 'Review', type: 'textarea' },
+    ], { cols: '2fr 1fr 1fr', addLabel: 'Add review', onChange: markDirty, max: 12 });
 
     listEditor(main.querySelector('#schedule-editor'), site.schedule, [
       { key: 'time', label: 'Time', placeholder: '9:00 AM' },
