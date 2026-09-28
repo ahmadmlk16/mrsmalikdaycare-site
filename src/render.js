@@ -1,5 +1,6 @@
 // Server-rendered homepage, built from the content saved in the admin dashboard.
 import { esc } from './util.js';
+import { THEMES, activeTheme, themeStyle } from './themes.js';
 
 const paragraphs = (text) =>
   String(text || '')
@@ -29,19 +30,19 @@ const HIGHLIGHT_ICONS = ['shield', 'heart', 'star', 'heart', 'shield', 'star'];
 // Friendly illustration used until a cover photo is uploaded.
 const COVER_ILLUSTRATION = `
 <svg class="cover-illustration" viewBox="0 0 480 420" role="img" aria-label="Illustration of a cozy house with a sun and a tree">
-  <circle cx="390" cy="80" r="46" fill="#F6C453"/>
-  <g stroke="#F6C453" stroke-width="8" stroke-linecap="round">
+  <circle cx="390" cy="80" r="46" fill="var(--sun)"/>
+  <g stroke="var(--sun)" stroke-width="8" stroke-linecap="round">
     <path d="M390 12v14M390 134v14M322 80h14M444 80h14M342 32l10 10M428 118l10 10M342 128l10-10M428 42l10-10"/>
   </g>
-  <ellipse cx="240" cy="380" rx="220" ry="34" fill="#CFE3C4"/>
+  <ellipse cx="240" cy="380" rx="220" ry="34" fill="var(--ground, #CFE3C4)"/>
   <circle cx="92" cy="250" r="58" fill="#8DB386"/><circle cx="60" cy="210" r="40" fill="#9FC398"/>
   <rect x="86" y="280" width="14" height="96" rx="6" fill="#9A6B4C"/>
   <rect x="160" y="200" width="200" height="176" rx="14" fill="#FFFFFF"/>
-  <path d="M140 214 260 112l120 102z" fill="#E2712F" stroke="#E2712F" stroke-width="16" stroke-linejoin="round"/>
-  <rect x="236" y="286" width="48" height="90" rx="24" fill="#1E4F7A"/>
+  <path d="M140 214 260 112l120 102z" fill="var(--orange)" stroke="var(--orange)" stroke-width="16" stroke-linejoin="round"/>
+  <rect x="236" y="286" width="48" height="90" rx="24" fill="var(--blue)"/>
   <circle cx="274" cy="334" r="4" fill="#F6C453"/>
-  <rect x="184" y="236" width="46" height="46" rx="10" fill="#DDEBF6"/>
-  <rect x="290" y="236" width="46" height="46" rx="10" fill="#DDEBF6"/>
+  <rect x="184" y="236" width="46" height="46" rx="10" fill="var(--sky)"/>
+  <rect x="290" y="236" width="46" height="46" rx="10" fill="var(--sky)"/>
   <path d="M207 236v46M184 259h46M313 236v46M290 259h46" stroke="#FFFFFF" stroke-width="4"/>
   <circle cx="190" cy="360" r="8" fill="#F29BAB"/><circle cx="330" cy="362" r="8" fill="#F6C453"/>
   <circle cx="352" cy="352" r="8" fill="#F29BAB"/><circle cx="170" cy="350" r="6" fill="#F6C453"/>
@@ -56,7 +57,12 @@ function alternateTints(html) {
   });
 }
 
-export function renderHome(site, gallery, { loggedIn = null } = {}) {
+export function renderHome(site, gallery, { loggedIn = null, previewTheme = null } = {}) {
+  const theme = previewTheme
+    ? { key: previewTheme, holiday: !!THEMES[previewTheme].holiday }
+    : activeTheme(site);
+  const themeInfo = THEMES[theme.key];
+  const bannerText = theme.holiday && site.holidayBanner ? themeInfo.banner : '';
   const year = new Date().getFullYear();
   const hoursLine = site.hours.map((h) => `${h.days}${h.days && h.time ? ': ' : ''}${h.time}`).join(' · ');
   const title = `${site.name} | Family Home Daycare in ${site.area}`;
@@ -135,6 +141,7 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
+${themeStyle(theme.key) ? `<style>${themeStyle(theme.key)}</style>` : ''}
 <script type="application/ld+json">${JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'ChildCare',
@@ -146,7 +153,8 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
     openingHours: hoursLine,
   }).replace(/</g, '\\u003c')}</script>
 </head>
-<body>
+<body class="theme-${esc(theme.key)}">
+${bannerText ? `<div class="holiday-banner" role="note">${esc(bannerText)}</div>` : ''}
 <a class="skip-link" href="#main">Skip to content</a>
 
 <header class="site-header" id="top">
@@ -167,6 +175,7 @@ ${site.coverPhotoId ? `<meta property="og:image" content="/media/${esc(site.cove
 
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
+    ${themeInfo.snow ? '<div class="snow" aria-hidden="true"></div>' : ''}
     <div class="container hero-inner">
       <div class="hero-copy">
         ${

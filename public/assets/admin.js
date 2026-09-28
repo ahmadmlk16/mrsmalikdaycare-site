@@ -211,7 +211,7 @@
   }
 
   async function renderContent() {
-    const { site } = await api('/api/admin/content');
+    const { site, themes } = await api('/api/admin/content');
     dirty = false;
     main.innerHTML = `
       <div class="page-title"><h1>Homepage</h1><a class="btn btn-sm" href="/" target="_blank" rel="noopener">Preview website</a></div>
@@ -230,6 +230,16 @@
           <label class="field"><span>License line</span><input data-key="license"></label>
         </div>
         <div class="field"><span>Cover photo <small>(a wide photo works best)</small></span><div class="photo-pick" data-photo="coverPhotoId"></div></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><div><h2>Theme &amp; holidays</h2>
+          <p class="muted">Pick the website's colors. Holiday themes can switch on by themselves for the week before and after each holiday.</p></div></div>
+        <div class="field"><span>Everyday color theme</span><div class="theme-grid" id="theme-grid"></div></div>
+        <label class="check"><input type="checkbox" data-key="holidayThemes"> Automatically use a holiday theme 1 week before and after each holiday</label>
+        <label class="check" style="margin-top:8px"><input type="checkbox" data-key="holidayBanner"> Show a small holiday greeting bar at the top during holidays</label>
+        <div class="field" style="margin-top:14px"><span>Holidays to celebrate <small>(click Preview to see each one)</small></span><div class="holiday-list" id="holiday-list"></div></div>
+        <p class="msg" id="theme-now" style="background:#f3ebe1;margin:0"></p>
       </section>
 
       <section class="card">
@@ -341,6 +351,56 @@
     };
     refreshGoogleStatus();
 
+    // Theme picker
+    const swatch = (t) => {
+      const v = { cream: '#fff8ee', peach: '#fde7d3', orange: '#e2712f', blue: '#1e4f7a', ...t.vars };
+      return `<span class="swatch" style="background:${esc(v.cream)}"><i style="background:${esc(v.orange)}"></i><i style="background:${esc(v.peach)}"></i><i style="background:${esc(v.blue)}"></i></span>`;
+    };
+    const themeGrid = main.querySelector('#theme-grid');
+    const renderThemes = () => {
+      themeGrid.innerHTML = themes.base
+        .map(
+          (t) => `<label class="theme-option${site.theme === t.key ? ' selected' : ''}">
+            <input type="radio" name="theme" value="${esc(t.key)}" ${site.theme === t.key ? 'checked' : ''}>
+            ${swatch(t)}<span>${esc(t.label)}</span>
+            <a href="/?theme=${esc(t.key)}" target="_blank" rel="noopener" class="small">Preview</a>
+          </label>`,
+        )
+        .join('');
+      themeGrid.querySelectorAll('input').forEach((r) =>
+        r.addEventListener('change', () => {
+          site.theme = r.value;
+          markDirty();
+          renderThemes();
+        }),
+      );
+    };
+    renderThemes();
+    const holidayList = main.querySelector('#holiday-list');
+    holidayList.innerHTML = themes.holidays
+      .map(
+        (h) => `<label class="holiday-option">
+          <input type="checkbox" value="${esc(h.key)}" ${site.holidays.includes(h.key) ? 'checked' : ''}>
+          ${swatch(h)}<span>${esc(h.label)}</span>
+          <a href="/?theme=${esc(h.key)}" target="_blank" rel="noopener" class="small">Preview</a>
+        </label>`,
+      )
+      .join('');
+    holidayList.querySelectorAll('input').forEach((c) =>
+      c.addEventListener('change', () => {
+        site.holidays = [...holidayList.querySelectorAll('input:checked')].map((x) => x.value);
+        markDirty();
+      }),
+    );
+    const themeNow = main.querySelector('#theme-now');
+    const showThemeNow = (t) => {
+      const label = [...themes.base, ...themes.holidays].find((x) => x.key === t.active.key)?.label || t.active.key;
+      themeNow.textContent = t.active.holiday
+        ? `Right now the website is showing the ${label} theme (holiday). It switches back automatically afterwards.`
+        : `Right now the website is showing the ${label} theme.`;
+    };
+    showThemeNow(themes);
+
     main.querySelectorAll('[data-photo]').forEach((box) => {
       const key = box.dataset.photo;
       const render = () => {
@@ -425,7 +485,8 @@
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving…';
       try {
-        await api('/api/admin/content', { method: 'PUT', body: { site } });
+        const saved = await api('/api/admin/content', { method: 'PUT', body: { site } });
+        showThemeNow(saved.themes);
         dirty = false;
         state.textContent = 'All changes saved';
         state.classList.remove('dirty');
