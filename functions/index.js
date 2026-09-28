@@ -3,6 +3,7 @@ import { currentUser } from '../src/auth.js';
 import { db, getSite } from '../src/db.js';
 import { renderHome } from '../src/render.js';
 import { getGoogleRating } from '../src/google.js';
+import { THEMES } from '../src/themes.js';
 
 export async function onRequestGet({ request, env }) {
   let site;
@@ -29,7 +30,10 @@ export async function onRequestGet({ request, env }) {
     const { DEFAULT_SITE } = await import('../src/content.js');
     site = site || { ...DEFAULT_SITE };
   }
-  return new Response(renderHome(site, gallery, { loggedIn: user?.role || null }), {
+  // ?theme=christmas lets the admin preview any theme without saving it.
+  const preview = new URL(request.url).searchParams.get('theme');
+  const previewTheme = preview && THEMES[preview] ? preview : null;
+  return new Response(renderHome(site, gallery, { loggedIn: user?.role || null, previewTheme }), {
     headers: {
       'content-type': 'text/html; charset=utf-8',
       'cache-control': 'no-cache',

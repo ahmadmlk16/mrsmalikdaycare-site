@@ -17,6 +17,7 @@ import { db, getSite, saveSite } from './db.js';
 import { sendInquiryEmail } from './email.js';
 import { cleanProfile, parseProfile } from './profile.js';
 import { getGoogleRating } from './google.js';
+import { THEMES, BASE_THEMES, HOLIDAY_THEMES, activeTheme } from './themes.js';
 import { HttpError, clientIp, fail, isEmail, json, now, parseCookies, randomId, readJson, sha256, str } from './util.js';
 
 const MAX_UPLOAD = 10 * 1024 * 1024;
@@ -259,15 +260,23 @@ route('GET', '/api/admin/google/status', async ({ request, env, url }) => {
 
 /* ------------------------------- Admin: content ---------------------------- */
 
+function themeInfo(site) {
+  const pick = (keys) =>
+    keys.map((k) => ({ key: k, label: THEMES[k].label, vars: THEMES[k].vars, banner: THEMES[k].banner || '' }));
+  return { base: pick(BASE_THEMES), holidays: pick(HOLIDAY_THEMES), active: activeTheme(site) };
+}
+
 route('GET', '/api/admin/content', async ({ request, env }) => {
   await requireUser(request, env, 'admin');
-  return json({ site: await getSite(env) });
+  const site = await getSite(env);
+  return json({ site, themes: themeInfo(site) });
 });
 
 route('PUT', '/api/admin/content', async ({ request, env }) => {
   await requireUser(request, env, 'admin');
   const body = await readJson(request);
-  return json({ site: await saveSite(env, body.site) });
+  const site = await saveSite(env, body.site);
+  return json({ site, themes: themeInfo(site) });
 });
 
 /* ------------------------------- Admin: photos ----------------------------- */

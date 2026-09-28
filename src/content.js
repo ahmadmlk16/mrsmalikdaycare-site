@@ -1,11 +1,16 @@
 // Default homepage content. Everything here can be edited from the admin
 // dashboard; these values are only used until the admin saves changes.
 import { str } from './util.js';
+import { BASE_THEMES, HOLIDAY_THEMES } from './themes.js';
 
 export const DEFAULT_SITE = {
   name: "Mrs. Malik's Daycare",
   enrollmentStatus: 'Now enrolling',
   badges: [{ text: 'Now enrolling', color: 'green' }],
+  theme: 'warm',
+  holidayThemes: true,
+  holidays: HOLIDAY_THEMES,
+  holidayBanner: true,
   heroTitle: 'A warm, loving home away from home',
   heroSubtitle:
     'Licensed family home daycare in Alexandria, VA. Small groups, home-cooked meals, and caring attention for every child.',
@@ -78,6 +83,10 @@ export function cleanSite(input) {
   return {
     name: str(s.name, LIMITS.short),
     enrollmentStatus: str(s.enrollmentStatus, LIMITS.short),
+    theme: BASE_THEMES.includes(s.theme) ? s.theme : 'warm',
+    holidayThemes: s.holidayThemes !== false,
+    holidays: Array.isArray(s.holidays) ? HOLIDAY_THEMES.filter((k) => s.holidays.includes(k)) : HOLIDAY_THEMES,
+    holidayBanner: s.holidayBanner !== false,
     // Older saves only had one "enrollmentStatus" badge; turn it into the list.
     badges: list(
       input && input.badges === undefined
