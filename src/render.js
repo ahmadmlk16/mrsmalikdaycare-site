@@ -98,11 +98,12 @@ export function renderHome(site, gallery, { loggedIn = null } = {}) {
     ? `<a class="btn btn-ghost btn-sm" href="${loggedIn === 'admin' ? '/admin' : '/portal'}">${loggedIn === 'admin' ? 'Dashboard' : 'My photos'}</a>`
     : `<a class="btn btn-ghost btn-sm" href="/login">Parent login</a>`;
 
+  const GALLERY_PREVIEW = 3;
   const galleryHtml = gallery.length
-    ? `<div class="gallery-grid">${gallery
+    ? `<div class="gallery-grid" id="gallery-grid">${gallery
         .map(
           (p, i) => `
-        <figure class="gallery-item">
+        <figure class="gallery-item${i >= GALLERY_PREVIEW ? ' is-extra' : ''}">
           <button type="button" class="gallery-open" data-index="${i}" aria-label="Open photo${p.caption ? ': ' + esc(p.caption) : ''}">
             <img src="/media/${esc(p.id)}" alt="${esc(p.caption || 'Daycare photo')}" loading="lazy"${
               p.width && p.height ? ` width="${p.width}" height="${p.height}"` : ''
@@ -111,7 +112,11 @@ export function renderHome(site, gallery, { loggedIn = null } = {}) {
           ${p.caption ? `<figcaption>${esc(p.caption)}</figcaption>` : ''}
         </figure>`,
         )
-        .join('')}</div>`
+        .join('')}</div>${
+        gallery.length > GALLERY_PREVIEW
+          ? `<div class="gallery-more"><button type="button" class="btn btn-secondary" id="gallery-toggle" aria-expanded="false" aria-controls="gallery-grid" data-count="${gallery.length}">See all ${gallery.length} photos</button></div>`
+          : ''
+      }`
     : `<div class="empty-card"><p>Photos of our play space and activities are coming soon.</p></div>`;
 
   return alternateTints(`<!doctype html>

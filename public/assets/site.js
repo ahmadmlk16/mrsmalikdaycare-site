@@ -111,6 +111,19 @@
     }
   });
 
+  // Gallery: show the first 3 photos, expand to see the rest
+  const galleryToggle = document.getElementById('gallery-toggle');
+  if (galleryToggle) {
+    const grid = document.getElementById('gallery-grid');
+    const total = galleryToggle.dataset.count;
+    galleryToggle.addEventListener('click', () => {
+      const open = grid.classList.toggle('expanded');
+      galleryToggle.setAttribute('aria-expanded', String(open));
+      galleryToggle.textContent = open ? 'Show fewer photos' : `See all ${total} photos`;
+      if (!open) document.getElementById('gallery').scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+
   // Gallery lightbox
   const lb = document.getElementById('lightbox');
   const photos = window.GALLERY || [];
