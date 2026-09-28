@@ -5,6 +5,7 @@ import { str } from './util.js';
 export const DEFAULT_SITE = {
   name: "Mrs. Malik's Daycare",
   enrollmentStatus: 'Now enrolling',
+  badges: [{ text: 'Now enrolling', color: 'green' }],
   heroTitle: 'A warm, loving home away from home',
   heroSubtitle:
     'Licensed family home daycare in Alexandria, VA. Small groups, home-cooked meals, and caring attention for every child.',
@@ -62,6 +63,8 @@ export const DEFAULT_SITE = {
     "Have a question or want to come see our space? Send us a message and we'll get back to you within a day.",
 };
 
+export const BADGE_COLORS = ['green', 'orange', 'blue', 'pink', 'yellow'];
+
 const LIMITS = { short: 120, medium: 400, long: 5000 };
 
 function list(input, max, mapItem) {
@@ -75,6 +78,14 @@ export function cleanSite(input) {
   return {
     name: str(s.name, LIMITS.short),
     enrollmentStatus: str(s.enrollmentStatus, LIMITS.short),
+    // Older saves only had one "enrollmentStatus" badge; turn it into the list.
+    badges: list(
+      input && input.badges === undefined
+        ? s.enrollmentStatus ? [{ text: s.enrollmentStatus, color: 'green' }] : []
+        : s.badges,
+      6,
+      (b) => ({ text: str(b?.text, 60), color: BADGE_COLORS.includes(b?.color) ? b.color : 'green' }),
+    ).filter((b) => b.text),
     heroTitle: str(s.heroTitle, LIMITS.short),
     heroSubtitle: str(s.heroSubtitle, LIMITS.medium),
     coverPhotoId: str(s.coverPhotoId, 64),

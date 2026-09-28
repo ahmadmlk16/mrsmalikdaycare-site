@@ -128,7 +128,11 @@
                       </div>
                     </div>`
                   : `<label>${esc(f.label)}${
-                  f.type === 'textarea'
+                  f.type === 'select'
+                    ? `<select class="inline-input" data-k="${f.key}">${f.options
+                        .map(([v, label]) => `<option value="${esc(v)}"${item[f.key] === v ? ' selected' : ''}>${esc(label)}</option>`)
+                        .join('')}</select>`
+                    : f.type === 'textarea'
                     ? `<textarea class="inline-input" data-k="${f.key}" placeholder="${esc(f.placeholder || '')}">${esc(item[f.key])}</textarea>`
                     : `<input class="inline-input" data-k="${f.key}" value="${esc(item[f.key])}" placeholder="${esc(f.placeholder || '')}">`
                 }</label>`,
@@ -216,8 +220,9 @@
         <div class="card-head"><div><h2>Cover</h2><p class="muted">The first thing visitors see at the top of the page.</p></div></div>
         <div class="grid-2">
           <label class="field"><span>Daycare name</span><input data-key="name"></label>
-          <label class="field"><span>Status badge <small>(e.g. "Now enrolling", leave blank to hide)</small></span><input data-key="enrollmentStatus"></label>
+          <span></span>
         </div>
+        <div class="field"><span>Badges <small>(small labels above the headline, e.g. "Now enrolling", "Infant spots open"; up to 6)</small></span><div id="badges-editor"></div></div>
         <label class="field"><span>Headline</span><input data-key="heroTitle"></label>
         <label class="field"><span>Short description</span><textarea data-key="heroSubtitle" rows="2"></textarea></label>
         <div class="grid-2">
@@ -379,6 +384,16 @@
       { key: 'title', label: 'Title', placeholder: 'CPR & First Aid' },
       { key: 'text', label: 'Text', placeholder: 'One short sentence' },
     ], { cols: '1fr 2fr', addLabel: 'Add highlight', onChange: markDirty, max: 6 });
+
+    listEditor(main.querySelector('#badges-editor'), site.badges, [
+      { key: 'text', label: 'Badge text', placeholder: 'Now enrolling' },
+      {
+        key: 'color',
+        label: 'Color',
+        type: 'select',
+        options: [['green', 'Green'], ['orange', 'Orange'], ['blue', 'Blue'], ['pink', 'Pink'], ['yellow', 'Yellow']],
+      },
+    ], { cols: '2fr 1fr', addLabel: 'Add badge', onChange: markDirty, max: 6 });
 
     listEditor(main.querySelector('#providers-editor'), site.providers, [
       { key: 'photoId', label: 'Photo', type: 'photo' },
