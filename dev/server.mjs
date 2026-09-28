@@ -66,6 +66,8 @@ if (process.env.MOCK_GOOGLE) {
 const home = await import(path.join(root, 'functions/index.js'));
 const api = await import(path.join(root, 'functions/api/[[path]].js'));
 const media = await import(path.join(root, 'functions/media/[[path]].js'));
+const files = await import(path.join(root, 'functions/files/[[path]].js'));
+const documentsPage = await import(path.join(root, 'functions/documents.js'));
 const holidays = await import(path.join(root, 'functions/holidays.js'));
 const articles = await import(path.join(root, 'functions/articles.js'));
 
@@ -90,6 +92,11 @@ async function handle(request) {
   if (pathname === '/holidays' && request.method === 'GET') return holidays.onRequestGet(ctx);
   if (pathname === '/articles' && request.method === 'GET') return articles.onRequestGet(ctx);
   if (pathname.startsWith('/api/')) return api.onRequest(ctx);
+  if (pathname === '/documents' && request.method === 'GET') return documentsPage.onRequestGet(ctx);
+  if (pathname.startsWith('/files/')) {
+    ctx.params = { path: pathname.slice(7).split('/') };
+    return request.method === 'GET' ? files.onRequestGet(ctx) : new Response('Method not allowed', { status: 405 });
+  }
   if (pathname.startsWith('/media/')) {
     ctx.params = { path: pathname.slice(7).split('/') };
     return request.method === 'GET' ? media.onRequestGet(ctx) : new Response('Method not allowed', { status: 405 });

@@ -41,6 +41,21 @@ const SCHEMA = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS photos_scope ON photos(scope, family_id, sort)`,
+  `CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    r2_key TEXT NOT NULL,
+    scope TEXT NOT NULL CHECK (scope IN ('public', 'family')),
+    family_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size INTEGER NOT NULL DEFAULT 0,
+    sort INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS documents_scope ON documents(scope, family_id, sort)`,
   `CREATE TABLE IF NOT EXISTS inquiries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,

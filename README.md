@@ -7,6 +7,7 @@ Website for Mrs. Malik's Daycare, hosted on Cloudflare Pages (free tier).
 - **Family portal** (`/portal`): enrolled families log in to see and download their own photos and keep their contact and emergency info up to date. No self-registration: accounts are created by an admin.
 - **Closed days** (`/holidays`): a separate page listing the days the daycare is closed. Admins add and remove days under "Closed days" in the dashboard; it is linked from the family portal, not from the homepage.
 - **Articles** (`/articles`): a list of links (pages on this site like `/holidays`, or outside articles), managed under "Articles" in the dashboard and linked from the homepage menu and footer.
+- **Documents** (`/documents`): downloadable forms (PDF, Word, Excel, images) uploaded under "Documents" in the dashboard. Each family also has private documents (signed forms, tax statements, receipts) uploaded from their family page and shown only in their portal. Files are stored in the same R2 bucket under `docs/` and served from `/files/<id>/<name>`; private files check the login on every download.
 
 ## Branches
 

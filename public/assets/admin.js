@@ -19,7 +19,7 @@
     if (dirty) e.preventDefault();
   });
 
-  const TABS = { inquiries: renderInquiries, content: renderContent, closures: renderClosures, articles: renderArticles, gallery: renderGallery, families: renderFamilies, account: renderAccount };
+  const TABS = { inquiries: renderInquiries, content: renderContent, closures: renderClosures, articles: renderArticles, documents: renderDocumentsTab, gallery: renderGallery, families: renderFamilies, account: renderAccount };
 
   async function route() {
     const [tab, sub] = location.hash.slice(1).split('/');
@@ -738,6 +738,7 @@
 
     const PAGES = [
       { title: 'Daycare holidays', url: '/holidays', description: 'Days the daycare is closed.' },
+      { title: 'Documents', url: '/documents', description: 'Forms to download and fill out.' },
     ];
     const form = main.querySelector('#article-form');
     main.querySelector('#a-title').value = articles.title;
@@ -858,6 +859,198 @@
     main.querySelector('#a-save').onclick = attempt(() =>
       save({ ...articles, title: main.querySelector('#a-title').value, intro: main.querySelector('#a-intro').value }, 'Page text saved'),
     );
+  }
+
+  /* -------------------------------- Documents -------------------------------- */
+
+  const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.txt,.csv,.jpg,.jpeg,.png,.heic';
+  const DOC_KIND = { pdf: 'PDF', doc: 'DOC', docx: 'DOC', rtf: 'DOC', xls: 'XLS', xlsx: 'XLS', csv: 'XLS', ppt: 'PPT', pptx: 'PPT', jpg: 'IMG', jpeg: 'IMG', png: 'IMG', heic: 'IMG', txt: 'TXT' };
+  const fmtBytes = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+
+  function pickDocs() {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = DOC_ACCEPT;
+      input.multiple = true;
+      input.onchange = () => resolve([...input.files]);
+      input.click();
+    });
+  }
+
+  async function renderDocumentsTab() {
+    main.innerHTML = `
+      <div class="page-title"><h1>Documents</h1><a class="btn btn-sm" href="/documents" target="_blank" rel="noopener">View page</a></div>
+      <p class="muted" style="margin-top:-8px">Forms anyone can download from the Documents page (enrollment forms, policies, menus…). For a family's private files, like signed forms or tax statements, open <a href="#families">Families</a> and choose "Photos &amp; documents".</p>
+      <div class="card"><div id="dm"></div></div>`;
+    await docManager(main.querySelector('#dm'), { scope: 'public' });
+  }
+
+  async function docManager(container, { scope, familyId }) {
+    const q = new URLSearchParams({ scope });
+    if (familyId) q.set('familyId', familyId);
+    let { documents, categories } = await api(`/api/admin/documents?${q}`);
+    const isFamily = scope === 'family';
+
+    container.innerHTML = `
+      <div class="grid-2" style="align-items:end">
+        ${
+          isFamily
+            ? `<label class="field"><span>Put new uploads in</span><select id="doc-cat">${categories.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>`
+            : `<label class="field"><span>Section <small>(optional, e.g. "Enrollment forms")</small></span><input id="doc-cat" maxlength="60" list="doc-cats"><datalist id="doc-cats"></datalist></label>`
+        }
+        <span></span>
+      </div>
+      <div class="dropzone" tabindex="0" role="button">
+        <strong>Click to choose files</strong> or drag them here<br>
+        <span class="muted small">PDF, Word, Excel, or photos · up to 25 MB each</span>
+      </div>
+      <div class="upload-progress" hidden></div>
+      <div class="doc-admin-list"></div>`;
+    const drop = container.querySelector('.dropzone');
+    const progress = container.querySelector('.upload-progress');
+    const listEl = container.querySelector('.doc-admin-list');
+    const catInput = container.querySelector('#doc-cat');
+
+    const upload = async (files) => {
+      if (!files.length) return;
+      progress.hidden = false;
+      const failed = [];
+      for (const [n, file] of files.entries()) {
+        progress.textContent = `Uploading ${n + 1} of ${files.length}: ${file.name}…`;
+        try {
+          if (file.size > 25 * 1048576) throw new Error(`${file.name} is larger than 25 MB.`);
+          const p = new URLSearchParams({ scope, filename: file.name, category: catInput.value.trim() });
+          if (familyId) p.set('familyId', familyId);
+          const { document: doc } = await api(`/api/admin/documents?${p}`, {
+            method: 'POST',
+            body: file,
+            headers: { 'content-type': 'application/octet-stream' },
+          });
+          documents.unshift(doc);
+        } catch (err) {
+          failed.push(err.message);
+        }
+      }
+      progress.hidden = true;
+      draw();
+      if (failed.length) toast(failed[0], true);
+      else toast(`${files.length} file${files.length > 1 ? 's' : ''} uploaded`);
+    };
+    drop.onclick = async () => upload(await pickDocs());
+    drop.onkeydown = async (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        upload(await pickDocs());
+      }
+    };
+    drop.ondragover = (e) => {
+      e.preventDefault();
+      drop.classList.add('drag');
+    };
+    drop.ondragleave = () => drop.classList.remove('drag');
+    drop.ondrop = (e) => {
+      e.preventDefault();
+      drop.classList.remove('drag');
+      upload([...e.dataTransfer.files]);
+    };
+
+    const saveOrder = () => api('/api/admin/documents/reorder', { method: 'POST', body: { ids: documents.map((x) => x.id) } });
+
+    function draw() {
+      if (!isFamily) {
+        const cats = [...new Set(documents.map((x) => x.category).filter(Boolean))];
+        container.querySelector('#doc-cats').innerHTML = cats.map((c) => `<option value="${esc(c)}">`).join('');
+      }
+      if (!documents.length) {
+        listEl.innerHTML = `<p class="muted" style="margin-top:16px">No documents yet.</p>`;
+        return;
+      }
+      listEl.innerHTML = documents
+        .map(
+          (x, i) => `
+        <div class="row-card closure-row doc-admin-row">
+          <div style="display:flex;gap:12px;align-items:center;min-width:0">
+            <span class="doc-badge doc-${(DOC_KIND[x.ext] || 'file').toLowerCase()}">${DOC_KIND[x.ext] || 'FILE'}</span>
+            <div class="closure-when"><strong>${esc(x.title)}</strong>
+              <span class="small muted">${x.category ? esc(x.category) + ' · ' : ''}${esc(x.filename)} · ${fmtBytes(x.size)} · added ${fmtDate(x.createdAt)}</span>
+              ${x.description ? `<span class="small">${esc(x.description)}</span>` : ''}</div>
+          </div>
+          <div class="actions">
+            <button class="icon-btn" data-up="${i}" type="button" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>&uarr;</button>
+            <button class="icon-btn" data-down="${i}" type="button" aria-label="Move down" ${i === documents.length - 1 ? 'disabled' : ''}>&darr;</button>
+            <a class="btn btn-sm" href="${esc(x.url)}" target="_blank" rel="noopener">Open</a>
+            <button class="btn btn-sm" data-edit="${i}" type="button">Edit</button>
+            <button class="btn btn-sm btn-danger" data-del="${i}" type="button">Delete</button>
+          </div>
+        </div>`,
+        )
+        .join('');
+      const move = async (i, j) => {
+        [documents[i], documents[j]] = [documents[j], documents[i]];
+        draw();
+        await saveOrder().catch((err) => toast(err.message, true));
+      };
+      listEl.querySelectorAll('[data-up]').forEach((b) => (b.onclick = () => move(+b.dataset.up, +b.dataset.up - 1)));
+      listEl.querySelectorAll('[data-down]').forEach((b) => (b.onclick = () => move(+b.dataset.down, +b.dataset.down + 1)));
+      listEl.querySelectorAll('[data-del]').forEach(
+        (b) =>
+          (b.onclick = async () => {
+            const x = documents[+b.dataset.del];
+            if (!(await confirmDialog('Delete this document?', `"${x.title}" will be permanently deleted.`))) return;
+            try {
+              await api(`/api/admin/documents/${x.id}`, { method: 'DELETE' });
+              documents = documents.filter((y) => y.id !== x.id);
+              draw();
+              toast('Document deleted');
+            } catch (err) {
+              toast(err.message, true);
+            }
+          }),
+      );
+      listEl.querySelectorAll('[data-edit]').forEach(
+        (b) =>
+          (b.onclick = () => {
+            const x = documents[+b.dataset.edit];
+            const catField = isFamily
+              ? `<select name="category">${[...new Set([...categories, x.category].filter(Boolean))]
+                  .map((c) => `<option${c === x.category ? ' selected' : ''}>${esc(c)}</option>`)
+                  .join('')}</select>`
+              : `<input name="category" maxlength="60" value="${esc(x.category)}" placeholder="e.g. Enrollment forms">`;
+            modal(
+              `<form><h2>Edit document</h2><p class="msg err" hidden></p>
+                <label class="field"><span>Title</span><input name="heading" maxlength="150" value="${esc(x.title)}" required></label>
+                <label class="field"><span>${isFamily ? 'Folder' : 'Section <small>(optional)</small>'}</span>${catField}</label>
+                <label class="field"><span>Short description <small>(optional)</small></span><input name="description" maxlength="500" value="${esc(x.description)}"></label>
+                <div class="modal-actions"><button type="button" class="btn" data-close>Cancel</button><button class="btn btn-primary">Save</button></div>
+              </form>`,
+              {
+                onMount: (dlg, close) => {
+                  const f = dlg.querySelector('form');
+                  f.onsubmit = async (e) => {
+                    e.preventDefault();
+                    try {
+                      const { document: upd } = await api(`/api/admin/documents/${x.id}`, {
+                        method: 'PATCH',
+                        body: { title: f.heading.value.trim(), category: f.category.value.trim(), description: f.description.value.trim() },
+                      });
+                      documents = documents.map((y) => (y.id === upd.id ? upd : y));
+                      draw();
+                      close();
+                      toast('Saved');
+                    } catch (err) {
+                      const m = f.querySelector('.msg');
+                      m.textContent = err.message;
+                      m.hidden = false;
+                    }
+                  };
+                },
+              },
+            );
+          }),
+      );
+    }
+    draw();
   }
 
   /* ------------------------------ Photo manager ------------------------------ */
@@ -1059,7 +1252,7 @@
           <h3>${esc(f.name)} ${f.active ? '' : '<span class="badge red">Deactivated</span>'}
             ${f.mustChangePassword && f.active ? '<span class="badge">Hasn\'t logged in yet</span>' : ''}</h3>
           <div class="sub">${esc(f.email)}${f.profile.phone ? ' · ' + esc(f.profile.phone) : ''}${f.children ? ' · ' + esc(f.children) : ''}</div>
-          <div class="sub">${f.photoCount} photo${f.photoCount === 1 ? '' : 's'} · Last login: ${fmtDate(f.lastLoginAt)}</div>
+          <div class="sub">${f.photoCount} photo${f.photoCount === 1 ? '' : 's'} · ${f.docCount} document${f.docCount === 1 ? '' : 's'} · Last login: ${fmtDate(f.lastLoginAt)}</div>
         </div>
         <details class="family-details">
           <summary>Contact &amp; emergency info</summary>
@@ -1072,7 +1265,7 @@
           ${f.profile.notes ? `<p class="body" style="margin-top:8px">${esc(f.profile.notes)}</p>` : ''}
         </details>
         <div class="actions">
-          <a class="btn btn-sm btn-primary" href="#families/${f.id}">Photos</a>
+          <a class="btn btn-sm btn-primary" href="#families/${f.id}">Photos &amp; documents</a>
           <button class="btn btn-sm" data-a="edit">Edit</button>
           <button class="btn btn-sm" data-a="reset">Reset password</button>
           <button class="btn btn-sm" data-a="toggle">${f.active ? 'Deactivate' : 'Reactivate'}</button>
@@ -1111,12 +1304,12 @@
         }
       };
       row.querySelector('[data-a=toggle]').onclick = async () => {
-        if (f.active && !(await confirmDialog('Deactivate account?', `${f.name} won't be able to log in until you reactivate them. Their photos are kept.`, 'Deactivate'))) return;
+        if (f.active && !(await confirmDialog('Deactivate account?', `${f.name} won't be able to log in until you reactivate them. Their photos and documents are kept.`, 'Deactivate'))) return;
         await api(`/api/admin/families/${f.id}`, { method: 'PATCH', body: { active: !f.active } }).catch((err) => toast(err.message, true));
         renderFamilies();
       };
       row.querySelector('[data-a=del]').onclick = async () => {
-        if (!(await confirmDialog('Delete this family?', `This permanently deletes ${f.name}'s account and all ${f.photoCount} of their photos.`))) return;
+        if (!(await confirmDialog('Delete this family?', `This permanently deletes ${f.name}'s account, all ${f.photoCount} of their photos, and all ${f.docCount} of their documents (including signed forms and tax statements). To keep them, use Deactivate instead.`))) return;
         await api(`/api/admin/families/${f.id}`, { method: 'DELETE' }).catch((err) => toast(err.message, true));
         toast('Family deleted');
         renderFamilies();
@@ -1134,10 +1327,20 @@
     }
     main.innerHTML = `
       <p><a href="#families">&larr; All families</a></p>
-      <div class="page-title"><h1>${esc(f.name)}'s photos</h1></div>
-      <p class="muted">Only ${esc(f.name)} (and admins) can see these photos when they log in.</p>
-      <div class="card"><div id="pm"></div></div>`;
-    await photoManager(main.querySelector('#pm'), { scope: 'family', familyId: id });
+      <div class="page-title"><h1>${esc(f.name)}</h1></div>
+      <p class="muted">Only ${esc(f.name)} (and admins) can see these when they log in to their family portal.</p>
+      <section class="card">
+        <div class="card-head"><div><h2>Documents</h2><p class="muted">Signed forms, tax statements, receipts… The family can view and download them anytime.</p></div></div>
+        <div id="dm"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div><h2>Photos</h2></div></div>
+        <div id="pm"></div>
+      </section>`;
+    await Promise.all([
+      docManager(main.querySelector('#dm'), { scope: 'family', familyId: id }),
+      photoManager(main.querySelector('#pm'), { scope: 'family', familyId: id }),
+    ]);
   }
 
   /* -------------------------------- Account -------------------------------- */

@@ -7,7 +7,7 @@
 <title>Family photos | Mrs. Malik's Daycare</title>
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css?v=20260928c">
+<link rel="stylesheet" href="/assets/app.css?v=20260928d">
 </head>
 <body>
 <header class="topbar">
@@ -15,6 +15,7 @@
     <a class="brand" href="/"><img src="/assets/favicon.svg" alt="" width="32" height="32"> Mrs. Malik's Daycare</a>
     <div class="who">
       <a class="btn btn-sm" href="/holidays">Closed days</a>
+      <a class="btn btn-sm" href="/documents">Forms</a>
       <button class="btn btn-sm" id="info-btn">My family info</button>
       <button class="btn btn-sm" id="pw-btn">Change password</button>
       <button class="btn btn-sm" id="logout">Log out</button>
@@ -34,10 +35,16 @@
     Please add your phone number and an emergency contact so Mrs. Malik can reach someone quickly.
     <button class="btn btn-sm" id="nudge-btn" style="margin-left:8px">Add now</button>
   </div>
+  <section class="card portal-docs" id="documents" hidden>
+    <h2>My documents</h2>
+    <p class="muted" style="margin:0">Signed forms, statements, and other papers Mrs. Malik has saved for your family.</p>
+    <div id="doc-list"></div>
+  </section>
+  <h2 class="portal-section-title" id="photos-title" hidden>Photos</h2>
   <div class="portal-grid" id="grid"></div>
 </main>
 
-<script src="/assets/app.js?v=20260928c"></script>
+<script src="/assets/app.js?v=20260928d"></script>
 <script>
 (async () => {
   const { api, esc, modal, lightbox, logout, toast, familyProfileFields, formBody } = App;
@@ -50,7 +57,40 @@
   document.getElementById('logout').onclick = logout;
   document.getElementById('hello').textContent = user.name;
 
-  const { photos } = await api('/api/family/photos');
+  const [{ photos }, { documents }] = await Promise.all([api('/api/family/photos'), api('/api/family/documents')]);
+  if (documents.length) {
+    const KIND = { pdf: 'PDF', doc: 'DOC', docx: 'DOC', rtf: 'DOC', xls: 'XLS', xlsx: 'XLS', csv: 'XLS', ppt: 'PPT', pptx: 'PPT', jpg: 'IMG', jpeg: 'IMG', png: 'IMG', heic: 'IMG', txt: 'TXT' };
+    const size = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+    const groups = new Map();
+    for (const d of documents) {
+      const k = d.category || 'Other';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(d);
+    }
+    document.getElementById('doc-list').innerHTML = [...groups]
+      .map(([cat, docs]) => `<h3 class="portal-doc-group">${esc(cat)}</h3>${docs
+        .map((d) => {
+          const kind = KIND[d.ext] || 'FILE';
+          const view = ['pdf', 'jpg', 'jpeg', 'png'].includes(d.ext);
+          return `<div class="row-card closure-row portal-doc-row">
+            <div style="display:flex;gap:12px;align-items:center;min-width:0">
+              <span class="doc-badge doc-${kind.toLowerCase()}">${kind}</span>
+              <div class="closure-when"><strong>${esc(d.title)}</strong>
+                <span class="small muted">${esc(d.ext.toUpperCase())} · ${size(d.size)} · added ${App.fmtDate(d.createdAt)}</span>
+                ${d.description ? `<span class="small">${esc(d.description)}</span>` : ''}</div>
+            </div>
+            <div class="actions">
+              ${view ? `<a class="btn btn-sm" href="${esc(d.url)}" target="_blank" rel="noopener">View</a>` : ''}
+              <a class="btn btn-sm btn-primary" href="${esc(d.url)}?download=1">Download</a>
+            </div>
+          </div>`;
+        })
+        .join('')}`)
+      .join('');
+    document.getElementById('documents').hidden = false;
+    document.getElementById('photos-title').hidden = false;
+    if (location.hash === '#documents') document.getElementById('documents').scrollIntoView();
+  }
   const grid = document.getElementById('grid');
   document.getElementById('sub').textContent = photos.length
     ? `${photos.length} photo${photos.length === 1 ? '' : 's'} of ${user.children || 'your little one'}. Tap a photo to see it full size or download it.`

@@ -3,7 +3,7 @@
 import { esc } from './util.js';
 import { activeTheme, themeStyle } from './themes.js';
 
-export const ASSET_V = '20260928c';
+export const ASSET_V = '20260928d';
 
 export function pageShell(site, { title, description = '', bodyClass = '', loggedIn = null, adminHref = '/admin', noindex = false, now = new Date(), content }) {
   const theme = activeTheme(site, { now });
